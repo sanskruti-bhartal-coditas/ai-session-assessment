@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { isValidISODate, today } from "../../src/core/clock.js";
 import { UsageError } from "../../src/core/errors.js";
 
@@ -20,5 +20,22 @@ describe("today", () => {
   it("accepts leap days only in leap years", () => {
     expect(isValidISODate("2028-02-29")).toBe(true);
     expect(isValidISODate("2026-02-29")).toBe(false);
+  });
+
+  it("names the bad value and the expected format in the error", () => {
+    expect(() => today("tomorrow")).toThrow('invalid date "tomorrow", expected YYYY-MM-DD');
+  });
+
+  describe("system date", () => {
+    afterEach(() => vi.useRealTimers());
+
+    it.each([new Date(2026, 10, 24, 0, 30), new Date(2026, 10, 24, 23, 30)])(
+      "uses the local calendar date, not UTC (%s)",
+      (local) => {
+        vi.useFakeTimers();
+        vi.setSystemTime(local);
+        expect(today()).toBe("2026-11-24");
+      },
+    );
   });
 });

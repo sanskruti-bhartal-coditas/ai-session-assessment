@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -88,6 +88,50 @@ describe("store", () => {
     const blocker = join(dir, "file");
     writeFileSync(blocker, "x");
     expect(() => saveStore(join(blocker, "store.json"), emptyStore())).toThrow(StoreError);
+  });
+
+  it("rejects items that is not an array", () => {
+    saveStore(path, emptyStore());
+    writeFileSync(path, JSON.stringify({ version: 1, nextId: 1, items: {} }));
+    expect(() => loadStore(path)).toThrow(/unexpected shape/);
+  });
+
+  it.each([0, 1.5, "2", -1, null])("rejects nextId %j", (bad) => {
+    saveStore(path, emptyStore());
+    writeFileSync(path, JSON.stringify({ version: 1, nextId: bad, items: [] }));
+    expect(() => loadStore(path)).toThrow(StoreError);
+  });
+
+  it.each([{}, { id: 0 }, { id: "1" }, { id: 1.5 }, null])("rejects an item without a valid id: %j", (bad) => {
+    saveStore(path, emptyStore());
+    writeFileSync(path, JSON.stringify({ version: 1, nextId: 5, items: [bad] }));
+    expect(() => loadStore(path)).toThrow(/valid id/);
+  });
+
+  it("wraps an unreadable path (a directory) in StoreError", () => {
+    mkdirSync(path, { recursive: true });
+    expect(() => loadStore(path)).toThrow(StoreError);
+    expect(() => loadStore(path)).toThrow(/cannot read store/);
+  });
+
+  it("writes pretty-printed JSON with 2-space indent and a trailing newline", () => {
+    const s: Store = { version: 1, nextId: 2, items: [item(1)] };
+    saveStore(path, s);
+    expect(readFileSync(path, "utf8")).toBe(JSON.stringify(s, null, 2) + "\n");
+  });
+
+  it("replaces the previous content when saving twice", () => {
+    saveStore(path, { version: 1, nextId: 2, items: [item(1)] });
+    const second: Store = { version: 1, nextId: 4, items: [item(3)] };
+    saveStore(path, second);
+    expect(loadStore(path)).toEqual(second);
+  });
+
+  it("does not reuse an id after its item is removed", () => {
+    const s: Store = { version: 1, nextId: 4, items: [item(1), item(2), item(3)] };
+    s.items = s.items.filter((i) => i.id !== 3);
+    saveStore(path, s);
+    expect(allocateId(loadStore(path))).toBe(4);
   });
 
   it("allocates strictly increasing ids across save/load", () => {
