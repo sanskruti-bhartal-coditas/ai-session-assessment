@@ -1,0 +1,646 @@
+
+> <browser_instruction># Claude in Chrome browser automation
+
+  You have access to browser automation tools (mcp__claude-in-chrome__*) for
+  interacting with web pages in Chrome. Follow these guidelines for effective
+  browser automation.
+
+  ## Loading deferred tools
+
+  If the mcp__claude-in-chrome__* tools are deferred (must be loaded via
+  ToolSearch before use), load every tool you expect to need in ONE ToolSearch
+  call — the select query accepts a comma-separated list — never one call per
+  tool. Start with the core set:
+
+  ToolSearch with query
+  "select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrome__naviga
+  te,mcp__claude-in-chrome__computer,mcp__claude-in-chrome__read_page,mcp__clau
+  de-in-chrome__tabs_create_mcp,mcp__claude-in-chrome__tabs_close_mcp"
+
+  Add task-specific tools to the same call when the task obviously needs them:
+  read_console_messages / read_network_requests for debugging, form_input for
+  forms, gif_creator for recordings, javascript_tool for page scripting.
+
+  ## GIF recording
+
+  When performing multi-step browser interactions that the user may want to
+  review or share, use mcp__claude-in-chrome__gif_creator to record them.
+
+  You must ALWAYS:
+  * Capture extra frames before and after taking actions to ensure smooth
+  playback
+  * Name the file meaningfully to help the user identify it later (e.g.,
+  "login_process.gif")
+
+  ## Console log debugging
+
+  You can use mcp__claude-in-chrome__read_console_messages to read console
+  output. Console output may be verbose. If you are looking for specific log
+  entries, use the 'pattern' parameter with a regex-compatible pattern. This
+  filters results efficiently and avoids overwhelming output. For example, use
+  pattern: "[MyApp]" to filter for application-specific logs rather than
+  reading all console output.
+
+  ## Alerts and dialogs
+
+  IMPORTANT: Do not trigger JavaScript alerts, confirms, prompts, or browser
+  modal dialogs through your actions. These browser dialogs block all further
+  browser events and will prevent the extension from receiving any subsequent
+  commands. Instead, when possible, use console.log for debugging and then use
+  the mcp__claude-in-chrome__read_console_messages tool to read those log
+  messages. If a page has dialog-triggering elements:
+  1. Avoid clicking buttons or links that may trigger alerts (e.g., "Delete"
+  buttons with confirmation dialogs)
+  2. If you must interact with such elements, warn the user first that this may
+  interrupt the session
+  3. Use mcp__claude-in-chrome__javascript_tool to check for and dismiss any
+  existing dialogs before proceeding
+
+  If you accidentally trigger a dialog and lose responsiveness, inform the user
+  they need to manually dismiss it in the browser.
+
+  ## Avoid rabbit holes and loops
+
+  When using browser automation tools, stay focused on the specific task. If
+  you encounter any of the following, stop and ask the user for guidance:
+  - Unexpected complexity or tangential browser exploration
+  - Browser tool calls failing or returning errors after 2-3 attempts
+  - No response from the browser extension
+  - Page elements not responding to clicks or input
+  - Pages not loading or timing out
+  - Unable to complete the browser task despite multiple approaches
+
+  Explain what you attempted, what went wrong, and ask how the user would like
+  to proceed. Do not keep retrying the same failing browser action or explore
+  unrelated pages without checking in first.
+
+  ## Tab context and session startup
+
+  IMPORTANT: At the start of each browser automation session, call
+  mcp__claude-in-chrome__tabs_context_mcp first to get information about the
+  user's current browser tabs. Use this context to understand what the user
+  might want to work with before creating new tabs.
+
+  Never reuse tab IDs from a previous/other session. Follow these guidelines:
+  1. Only reuse an existing tab if the user explicitly asks to work with it
+  2. Otherwise, create a new tab with mcp__claude-in-chrome__tabs_create_mcp
+  3. If a tool returns an error indicating the tab doesn't exist or is invalid,
+  call tabs_context_mcp to get fresh tab IDs
+  4. When a tab is closed by the user or a navigation error occurs, call
+  tabs_context_mcp to see what tabs are available</browser_instruction>
+
+> start implementing module 2
+
+  Searched for 2 patterns, read 4 files, ran 3 shell commands (ctrl+o to expand)
+  ⎿  Interrupted · What should Claude do instead?
+
+> create a branch for this module and implement over there
+
+● Creating a branch for module 02 first, then I'll implement the parser there.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Write(src\parser\types.ts)
+  ⎿  Wrote 24 lines to src\parser\types.ts
+       1 export interface RawItem {
+       2   /** 1-based line number in the file. */
+       3   line: number;
+       4   /** True for [x] or [X]. */
+       5   checked: boolean;
+       6   ownerRaw: string | null;
+       7   task: string;
+       8   dueRaw: string | null;
+       9   /** Nesting level (0 = top). */
+      10   indent: number;
+     … +14 lines (ctrl+o to expand)
+
+● Write(src\parser\parseNote.ts)
+  ⎿  Wrote 221 lines to src\parser\parseNote.ts
+       1 import type { ParseOutcome, ParsedNote, RawItem } from "./types.
+         js";
+       2
+       3 export type { ParseOutcome, ParsedNote, RawItem } from "./types.
+         js";
+       4
+       5 const CHECKBOX = /^(\s*)[-*+]\s+\[([ xX])\]\s+(.*)$/;
+       6 const ACTION_LINE = /^\s*ACTION:\s*(.*)$/i;
+       7 const DATE_LINE = /^\s*date:\s*(.*?)\s*$/i;
+       8 const ATTENDEES_LINE = /^\s*attendees:\s*(.*?)\s*$/i;
+     … +213 lines (ctrl+o to expand)
+
+● Update(src\parser\parseNote.ts)
+  ⎿  Added 1 line, removed 1 line
+      27  }
+      28 
+      29  function cleanText(s: string): string {
+      30 -  return s.trim().replace(/[\s.]+$/, (m) => (m.includes(".") &&
+         - /\b[A-Z]\.\s*$/.test(s.trim()) ? "." : "")).trim();           
+      30 +  return s.trim().replace(/\.+$/, "").trim();                  
+      31  }
+      32 
+      33  function looksLikeDue(phrase: string): boolean {
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Update(src\parser\parseNote.ts)
+  ⎿  Added 1 line, removed 1 line
+      27  }
+      28 
+      29  function cleanText(s: string): string {
+      30 -  return s.trim().replace(/\.+$/, "").trim();                  
+      30 +  return s.trim().replace(/[\s.,;—–-]+$/, "").trim();          
+      31  }
+      32 
+      33  function looksLikeDue(phrase: string): boolean {
+
+  Ran 1 shell command · 1 failed (ctrl+o to expand)
+
+● Write(tests\parser\parseNote.test.ts)
+  ⎿  Wrote 192 lines to tests\parser\parseNote.test.ts
+       1 import { readdirSync, readFileSync } from "node:fs";
+       2 import { describe, expect, it } from "vitest";
+       3 import { parseNote } from "../../src/parser/parseNote.js";
+       4 import type { ParsedNote } from "../../src/parser/types.js";
+       5
+       6 function parsed(content: string | Buffer): { note: ParsedNote; w
+         arnings: string[] } {
+       7   const r = parseNote("t.md", content);
+       8   if (r.kind !== "parsed") throw new Error(`expected parsed, got
+          skipped: ${r.reason}`);
+     … +184 lines (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Tests pass. Now ticking the task boxes.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Module 02 (parser) is implemented on a new branch, feature/02-parser, created
+  from feature/01-core. Typecheck is clean and all 75 tests pass, including the
+  new parser tests. Nothing is committed yet.
+
+  - Code: src/parser/types.ts and src/parser/parseNote.ts. Items are found by
+    scanning the whole file, since notes have items under several headings.
+  - Tests: tests/parser/parseNote.test.ts covers each skip reason, header
+    variant and item format. It also runs the parser over notes/ and checks the
+    spec's expected table. scratch.md, 2026-09-09-notes-final-v2.md and
+    untitled.md are skipped with the right reasons, and the .txt draft is never
+    read.
+  - Tasks: P1–P10 are ticked in modules/02-parser/tasks.md.
+
+  I handled a few formats beyond the spec because the sample notes use them. Say
+  if you'd rather I not:
+  - @anita: task gives ownerRaw of anita, without the @.
+  - Joint owners like Anita & Rahul and Lena (with Priya) are kept raw in
+    ownerRaw.
+  - Due phrases: a trailing by, due or from only splits off a due phrase if it
+    looks like a date. collect feedback from Acme therefore stays whole, while
+    freeze edits from 9 Oct splits.
+  - Dashes: a dangling dash is stripped from the task, so send quote to Acme —
+    by Friday becomes send quote to Acme.
+  - Bare "tomorrow": ACTION: Karan to circulate the offsite summary tomorrow
+    keeps "tomorrow" in the task text, because the spec only splits phrases with
+    a by/due/from prefix.
+
+  Do you want me to commit this on feature/02-parser?
+
+> /raise-pr
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● I pushed the branch, but the PR is not created yet because gh isn't installed.
+  Click the link below to open it.
+
+  Compare link (against feature/01-core):
+  https://github.com/sanskruti-bhartal-coditas/ai-session-assessment/compare/fea
+  ture/01-core...feature/02-parser?expand=1
+
+  I pointed the link at feature/01-core instead of main. feature/02-parser is
+  stacked on 01-core, which isn't merged into main. A PR against main would also
+  show the 01-core commits. Once 01-core merges, you can retarget the PR to
+  main.
+
+  Commit pushed: 191ca2a
+
+  Not committed: 2026-11-24-165214-connect-to-this-repo-for-the-project.txt and
+  conversation files/, because they are unrelated to this change.
+
+  npm run typecheck was clean and npm test passed 75 of 75 tests in this run.
+
+  ---
+
+  Title: Implement 02-parser: header, item extraction and owner/task/due
+  splitting
+
+  Summary
+
+  Implements module 02 (modules/02-parser/spec.md). parseNote turns one meeting
+  note into a raw header (title, date, attendees) and a list of raw action
+  items, or a skipped result with a reason. It does no date resolution, owner
+  resolution or dedupe, which belong to later modules.
+
+  Changes
+
+  - src/parser/types.ts: RawItem, ParsedNote, ParseOutcome.
+  - src/parser/parseNote.ts:
+    - Input guards for empty, NUL-byte and invalid UTF-8 content.
+    - Header parsing for title, Date:/date: and plain or bracketed Attendees.
+    - Item extraction for -/*/+ checkboxes with nesting depth, table rows and
+      ACTION: lines.
+    - Owner/task/due splitting.
+    - A top-level try/catch, so parseNote returns skipped instead of throwing.
+  - tests/parser/parseNote.test.ts: one test per skip reason, header variant and
+    item format, plus a run over every .md file in notes/.
+  - modules/02-parser/tasks.md: P1–P10 ticked.
+
+  Beyond the spec
+
+  - @anita: task is read as an owner and stored as anita, without the @.
+  - Joint and parenthetical owners (Anita & Rahul, Lena (with Priya)) are kept
+    raw in ownerRaw.
+  - A trailing by/due/from only splits off a due phrase when it looks like a
+    date. collect feedback from Acme stays whole, while freeze edits from 9 Oct
+    splits.
+  - A dangling dash before the due phrase is stripped from the task text.
+  - Items inside fenced code blocks are ignored.
+
+  Testing
+
+  - npm run typecheck: clean.
+  - npm test: 5 files, 75 tests, all passed.
+  - The sample-folder tests confirm that scratch.md,
+    2026-09-09-notes-final-v2.md and untitled.md are skipped with the specified
+    reasons. They also confirm the .txt draft is never considered, and that
+    every other .md note parses with at least one item.
+  - Not covered: Markdown variants that the sample notes don't use.
+
+  Notes for reviewers
+
+  - This PR is stacked on feature/01-core.
+  - ACTION: Karan to circulate the offsite summary tomorrow keeps "tomorrow" in
+    the task text, because the spec only splits phrases with a by/due/from
+    prefix. Module 03 or a later spec revision could handle that.
+  - Next in the build order: modules 03 (dates) and 04 (owners).
+
+  🤖 Generated with Claude Code (https://claude.com/claude-code)
+
+> make changes in the raise-pr skill, give me pr summary in a copy box, and it
+  should be markdown supported format
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(.claude\skills\raise-pr\SKILL.md)
+  ⎿  Added 5 lines, removed 1 line
+      47  8. **Report back** in this order:
+      48     1. The PR link (state whether the PR was created or only the
+           compare link is ready).
+      49     2. The commit hash(es) pushed.
+      50 -   3. The PR title and the full description, so it can be paste
+         -d.                                                             
+      50 +   3. The PR title and the full description, each inside its ow
+         +n fenced code block so the chat shows a copy button:           
+      51 +      - Title: a plain one-line code block.                    
+      52 +      - Description: a code block tagged `markdown`, containing
+         + the raw Markdown source exactly as it should be pasted into Gi
+         +tHub (headings, bullets, backticks, links, the closing Claude C
+         +ode line). Do not render it as formatted text outside the block
+         +.                                                              
+      53 +      - Open the description fence with four backticks (and clo
+         +se it with four) whenever the description contains its own trip
+         +le-backtick code blocks, so the inner fences do not break the o
+         +uter one.                                                      
+      54 +      - Do not put any commentary inside the blocks.           
+      55     4. Anything skipped or left out (files not committed, checks
+           not run).
+      56 
+      57  ## Rules
+
+● Update(.claude\skills\raise-pr\SKILL.md)
+  ⎿  Added 1 line
+      56 
+      57  ## Rules
+      58  - Never push to `main`, force-push, or merge the PR.
+      59 +- The PR description is always delivered as raw Markdown in a c
+         +opyable code block, never as rendered prose.                   
+      60  - Never skip hooks or bypass signing.
+      61  - Keep private details (the user's email, internal project name
+          s beyond the repo's own) out of the PR text unless they are alr
+          eady in the repo.
+
+● I updated SKILL.md (.claude/skills/raise-pr/SKILL.md). Step 8 now says to give
+  the PR title and description each in a fenced code block, so you get a copy
+  button. I haven't run the skill again to check the output.
+
+  - Title: a one-line code block.
+  - Description: a block tagged markdown holding the raw source to paste into
+    GitHub, with headings, bullets, backticks and links.
+  - Nested code blocks: the outer fence uses four backticks when the description
+    has its own triple-backtick blocks, so they don't break it.
+  - Commentary: none goes inside the blocks.
+
+  I also added a rule that the description is always delivered as copyable raw
+  Markdown, never as rendered prose.
+
+  Here is the description for the current PR in that format:
+
+  ## Summary
+  Implements module 02 (`modules/02-parser/spec.md`). `parseNote` turns one
+  meeting note into a raw header (title, date, attendees) and a list of raw
+  action items, or a `skipped` result with a reason. It does no date resolution,
+  owner resolution or dedupe, which belong to later modules.
+
+  ## Changes
+  - `src/parser/types.ts`: `RawItem`, `ParsedNote`, `ParseOutcome`.
+  - `src/parser/parseNote.ts`:
+    - Input guards for empty, NUL-byte and invalid UTF-8 content.
+    - Header parsing for title, `Date:`/`date:` and plain or bracketed
+  `Attendees`.
+    - Item extraction for `-`/`*`/`+` checkboxes with nesting depth, table rows
+  and `ACTION:` lines.
+    - Owner/task/due splitting.
+    - A top-level try/catch, so `parseNote` returns `skipped` instead of
+  throwing.
+  - `tests/parser/parseNote.test.ts`: one test per skip reason, header variant
+  and item format, plus a run over every `.md` file in `notes/`.
+  - `modules/02-parser/tasks.md`: P1–P10 ticked.
+
+  ## Beyond the spec
+  - `@anita: task` is read as an owner and stored as `anita`, without the `@`.
+  - Joint and parenthetical owners (`Anita & Rahul`, `Lena (with Priya)`) are
+  kept raw in `ownerRaw`.
+  - A trailing `by`/`due`/`from` only splits off a due phrase when it looks like
+  a date. `collect feedback from Acme` stays whole, while `freeze edits from 9
+  Oct` splits.
+  - A dangling dash before the due phrase is stripped from the task text.
+  - Items inside fenced code blocks are ignored.
+
+  ## Testing
+  - `npm run typecheck`: clean.
+  - `npm test`: 5 files, 75 tests, all passed.
+  - The sample-folder tests confirm that `scratch.md`,
+  `2026-09-09-notes-final-v2.md` and `untitled.md` are skipped with the
+  specified reasons. They also confirm the `.txt` draft is never considered, and
+  that every other `.md` note parses with at least one item.
+  - Not covered: Markdown variants that the sample notes don't use.
+
+  ## Notes for reviewers
+  - This PR is stacked on `feature/01-core`.
+  - `ACTION: Karan to circulate the offsite summary tomorrow` keeps "tomorrow"
+  in the task text, because the spec only splits phrases with a
+  `by`/`due`/`from` prefix. Module 03 or a later spec revision could handle
+  that.
+  - Next in the build order: modules 03 (dates) and 04 (owners).
+
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+  The skill edit is uncommitted on feature/02-parser.
+
+> create test cases md for all modules based on their specs. create a new
+  branch for this from main
+
+  Ran 3 shell commands, no result recorded for 1 other call (ctrl+o to expand)
+  ⎿  $ cd "c:/Users/Coditas-Admin/Desktop/Training/AI sessions/assessment/modules" && for m in 07-list 08-done 09-followup 10-cli; do echo "=== $m"; cat $m/spec.md; done; git show feature/01-core:modules/01-core/spec.md | grep -nE "UsageError|exit|Error" | head -20
+  ⎿  Interrupted · What should Claude do instead?
+
+> continue and then merge main into this branch
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Write(modules\02-parser\test-cases.md)  ⎿  Wrote 105 lines to modules\02-parser\test-cases.md
+       1 # 02-parser: Test Cases
+       2
+       3 Derived from [spec.md](spec.md). Status shows whether a case is
+         automated. `Auto` means covered in `tests/parser/parseNote.test.
+         ts` (on `feature/02-parser`). `GAP` means the spec requires it b
+         ut no test covers it yet.
+       4
+       5 All cases call `parseNote(file, content)`. Unless stated, "heade
+         r" means `# Meeting: Sync`, `Date: 2026-09-01`, `Attendees: A B,
+          C D`.
+     … +100 lines (ctrl+o to expand)
+
+● Write(modules\03-dates\test-cases.md)
+  ⎿  Wrote 75 lines to modules\03-dates\test-cases.md
+       1 # 03-dates: Test Cases
+       2
+       3 Derived from [spec.md](spec.md). Status shows whether a case is
+         automated in `tests/dates/` today. `GAP` means the spec requires
+          it but no test covers it yet (module not implemented yet).
+       4
+       5 Calendar anchors used below: 2026-09-01 is a Tuesday, 2026-09-04
+          a Friday, 2026-09-07 a Monday, 2026-09-14 a Monday.
+       6
+       7 ## `parseMeetingDate(dateRaw, filename)`
+     … +68 lines (ctrl+o to expand)
+
+● Write(modules\04-owners\test-cases.md)
+  ⎿  Wrote 77 lines to modules\04-owners\test-cases.md
+       1 # 04-owners: Test Cases
+       2
+       3 Derived from [spec.md](spec.md). Status shows whether a case is
+         automated in `tests/owners/` today. `GAP` means the spec require
+         s it but no test covers it yet (module not implemented yet).
+       4
+       5 Attendee sets used below:
+       6 - **Offsite (9):** Priya Nair, Rahul Mehta, Anita Desai, Sam Oka
+         for, Meera Iyer, Karan Joshi, Lena Fischer, Priya Shah, Rahul Ve
+         rma
+     … +71 lines (ctrl+o to expand)
+
+● Write(modules\05-dedupe\test-cases.md)
+  ⎿  Wrote 96 lines to modules\05-dedupe\test-cases.md
+       1 # 05-dedupe: Test Cases
+       2
+       3 Derived from [spec.md](spec.md). Status shows whether a case is
+         automated in `tests/dedupe/` today. `GAP` means the spec require
+         s it but no test covers it yet (module not implemented yet).
+       4
+       5 ## `normaliseTask`
+       6
+       7 | ID | Case | Input | Expected key | Status |
+       8 |---|---|---|---|---|
+     … +88 lines (ctrl+o to expand)
+
+● Write(modules\06-ingest\test-cases.md)
+  ⎿  Wrote 113 lines to modules\06-ingest\test-cases.md
+       1 # 06-ingest: Test Cases
+       2
+       3 Derived from [spec.md](spec.md) and scenarios 1, 2, 6, 8 and 9 i
+         n [REQUIREMENTS.md](../../REQUIREMENTS.md). Status shows whether
+          a case is automated in `tests/ingest/` today. `GAP` means the s
+         pec requires it but no test covers it yet (module not implemente
+         d yet).
+       4
+       5 Tests use temporary folders and temporary store paths, and a fix
+         ed `--today`. Sample-folder cases use `notes/` (36 files: 35 `.m
+     … +109 lines (~9 KB) (ctrl+o to expand)
+
+● Write(modules\07-list\test-cases.md)
+  ⎿  Wrote 117 lines to modules\07-list\test-cases.md
+       1 # 07-list: Test Cases
+       2
+       3 Derived from [spec.md](spec.md) and scenarios 4, 5 and 8 in [REQ
+         UIREMENTS.md](../../REQUIREMENTS.md). Status shows whether a cas
+         e is automated in `tests/list/` today. `GAP` means the spec requ
+         ires it but no test covers it yet (module not implemented yet).
+       4
+       5 Fixture store (today = `2026-11-24`):
+       6
+       7 | id | owner | status | due | sources |
+     … +110 lines (ctrl+o to expand)
+
+● Write(modules\08-done\test-cases.md)
+  ⎿  Wrote 73 lines to modules\08-done\test-cases.md
+       1 # 08-done: Test Cases
+       2
+       3 Derived from [spec.md](spec.md) and scenario 12 in [REQUIREMENTS
+         .md](../../REQUIREMENTS.md). Status shows whether a case is auto
+         mated in `tests/done/` today. `GAP` means the spec requires it b
+         ut no test covers it yet (module not implemented yet).
+       4
+       5 Fixture store: item 5 (`Priya Nair`, task `send the deck`, open)
+         , item 6 (unassigned, task `write changelog`, open), item 7 (`Sa
+         m Okafor`, done, `doneAt` `2026-10-01T09:00:00.000Z`).
+     … +68 lines (ctrl+o to expand)
+
+● Write(modules\09-followup\test-cases.md)
+  ⎿  Wrote 139 lines to modules\09-followup\test-cases.md
+       1 # 09-followup: Test Cases
+       2
+       3 Derived from [spec.md](spec.md) and scenarios 10, 11 and 12 in [
+         REQUIREMENTS.md](../../REQUIREMENTS.md). Status shows whether a
+         case is automated in `tests/followup/` today. `GAP` means the sp
+         ec requires it but no test covers it yet (module not implemented
+          yet).
+       4
+       5 Fixture store (today = `2026-11-24`), with `people.json` contain
+         ing `Karan Joshi` only:
+     … +134 lines (ctrl+o to expand)
+
+● Write(modules\10-cli\test-cases.md)
+  ⎿  Wrote 121 lines to modules\10-cli\test-cases.md
+       1 # 10-cli: Test Cases
+       2
+       3 Derived from [spec.md](spec.md) and the 12 scenarios in [REQUIRE
+         MENTS.md](../../REQUIREMENTS.md). Status shows whether a case is
+          automated in `tests/cli/` today. `GAP` means the spec requires
+         it but no test covers it yet (module not implemented yet).
+       4
+       5 CLI tests run the built entry (`node dist/cli.js`) or `tsx src/c
+         li.ts` as a child process, with a temp working directory, `--sto
+         re`, `--people` and `--outbox` pointed at temp paths, and `--tod
+     … +117 lines (~7 KB) (ctrl+o to expand)
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● I added a test-cases.md for each of modules 02 to 10 on a new branch,
+  docs/module-test-cases, created from main, and merged main into it. Nothing is
+  pushed yet.
+
+  The merge pulled in modules 01 and 02, which had landed on main since I
+  branched (PRs #1 and #2). After the merge, npm run typecheck is clean and npm
+  test passes 75 of 75.
+
+  - Format: the docs follow the existing 01-core format: tables with an ID,
+    case, input, expected result and status. They draw on each module's spec and
+    the REQUIREMENTS.md scenarios. Every case in modules 03–10 is marked GAP,
+    because none of those modules is implemented yet.
+  - 02-parser: the cases already covered by tests/parser/parseNote.test.ts are
+    marked Auto. The rest are GAP, mostly edge cases such as a BOM, an empty
+    Date: value, and checkboxes inside a code fence.
+  - Manual cases: two cases that need Claude to create the Gmail draft are
+    marked manual. These are GH-06 in modules/09-followup/test-cases.md and
+    E2E-10 in modules/10-cli/test-cases.md.
+  - Open questions: where a spec says nothing, the case says "decide and
+    document" instead of guessing. Examples are the footer wording for one item,
+    filesSeen with ignored files, and whether N open in the follow-up subject
+    includes overdue items. Two cases (D-11 and D-26 in
+    modules/03-dates/test-cases.md) mention date phrases from the sample notes
+    that the due-phrase table doesn't cover, such as EOD tomorrow and end of
+    next week.
+
+  Branch history:
+  - The raise-pr skill change was committed on feature/02-parser so I could
+    switch branches. That commit is local only and not pushed.
+  - The new branch has three commits of mine: the nine docs, the merge of main,
+    and a small wording fix in the 02 doc.
+
+  I did not push. Do you want me to push it and open a PR?
+
+> /raise-pr
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The branch is pushed, but I haven't created the PR because gh isn't installed.
+  Click the link to open it.
+
+  Compare link: https://github.com/sanskruti-bhartal-coditas/ai-session-assessme
+  nt/compare/main...docs/module-test-cases?expand=1
+
+  Commits pushed: 9acb2f2 is the branch head. The other two are 7d9f3c9 (the
+  nine docs) and c41d292 (the merge of main).
+
+  Checks: npm run typecheck was clean and npm test passed 75 of 75 in this run.
+
+  Left out: 2026-11-24-165214-connect-to-this-repo-for-the-project.txt and
+  conversation files/ are unrelated and were not committed. The raise-pr skill
+  change is not in this PR. It lives on feature/02-parser and is not on main.
+
+  Title
+  Add test-case docs for modules 02 to 10
+
+  Description
+  ## Summary
+  Adds a `test-cases.md` for each of modules 02 to 10, derived from each
+  module's `spec.md` and the 12 acceptance scenarios in `REQUIREMENTS.md`. They
+  give every module a reviewable list of expected behaviour before it is
+  implemented. 01-core already has its own doc.
+
+  ## Changes
+  - `modules/02-parser/test-cases.md`: guards, header, item formats,
+  owner/task/due splitting, sample folder.
+  - `modules/03-dates/test-cases.md`: `parseMeetingDate`, `resolveDue`,
+  `isOverdue`, including year rollover, invalid dates and timezone independence.
+  - `modules/04-owners/test-cases.md`: the rule order, the `knownPeople`
+  fallback, `Everyone`, ambiguity and `loadPeople`.
+  - `modules/05-dedupe/test-cases.md`: `normaliseTask`, Jaccard `similarity`,
+  `findMatch` and `mergeInto`, plus the threshold tuning step.
+  - `modules/06-ingest/test-cases.md`: folder handling, item creation, merging,
+  idempotency, store failures and the report format.
+  - `modules/07-list/test-cases.md`: filters, sorting and output format, using a
+  fixed fixture store.
+  - `modules/08-done/test-cases.md`: argument validation, not-found, marking
+  done and already-done.
+  - `modules/09-followup/test-cases.md`: owner resolution, ordering, email
+  content, the payload file and the Gmail hand-off.
+  - `modules/10-cli/test-cases.md`: help, global options, exit codes, error
+  output, build, README and the 12 end-to-end scenarios.
+
+  ## Notes on status values
+  - Each case has an ID, input, expected result and a status.
+  - 02-parser cases already covered by `tests/parser/parseNote.test.ts` are
+  marked `Auto`. The rest are `GAP`.
+  - Every case in modules 03 to 10 is `GAP`, because those modules are not
+  implemented yet.
+  - Two cases that need Claude to create the Gmail draft are marked `manual`:
+  `GH-06` in 09-followup and `E2E-10` in 10-cli.
+  - Where a spec is silent, the case says "decide and document" instead of
+  assuming. Examples:
+    - the footer wording for one item;
+    - whether `filesSeen` counts ignored files;
+    - whether `N open` in the follow-up subject includes overdue items;
+    - how `EOD tomorrow` and `end of next week` should resolve.
+
+  ## Testing
+  - Docs only. `npm run typecheck` was clean and `npm test` passed 5 files, 75
+  tests.
+  - Expected values (for example the weekday arithmetic and the list sort order)
+  were worked out by hand from the specs, not run against code.
+
+  ## Notes for reviewers
+  - Please check the "decide and document" cases, since they are the places
+  where the specs need a decision before the module is built.
+  - As each module is implemented, its `GAP` rows should flip to `Auto` with the
+  test file named.
+
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)

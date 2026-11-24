@@ -1,0 +1,1410 @@
+
+> <browser_instruction># Claude in Chrome browser automation
+
+  You have access to browser automation tools (mcp__claude-in-chrome__*) for
+  interacting with web pages in Chrome. Follow these guidelines for effective
+  browser automation.
+
+  ## Loading deferred tools
+
+  If the mcp__claude-in-chrome__* tools are deferred (must be loaded via
+  ToolSearch before use), load every tool you expect to need in ONE ToolSearch
+  call — the select query accepts a comma-separated list — never one call per
+  tool. Start with the core set:
+
+  ToolSearch with query
+  "select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrome__naviga
+  te,mcp__claude-in-chrome__computer,mcp__claude-in-chrome__read_page,mcp__clau
+  de-in-chrome__tabs_create_mcp,mcp__claude-in-chrome__tabs_close_mcp"
+
+  Add task-specific tools to the same call when the task obviously needs them:
+  read_console_messages / read_network_requests for debugging, form_input for
+  forms, gif_creator for recordings, javascript_tool for page scripting.
+
+  ## GIF recording
+
+  When performing multi-step browser interactions that the user may want to
+  review or share, use mcp__claude-in-chrome__gif_creator to record them.
+
+  You must ALWAYS:
+  * Capture extra frames before and after taking actions to ensure smooth
+  playback
+  * Name the file meaningfully to help the user identify it later (e.g.,
+  "login_process.gif")
+
+  ## Console log debugging
+
+  You can use mcp__claude-in-chrome__read_console_messages to read console
+  output. Console output may be verbose. If you are looking for specific log
+  entries, use the 'pattern' parameter with a regex-compatible pattern. This
+  filters results efficiently and avoids overwhelming output. For example, use
+  pattern: "[MyApp]" to filter for application-specific logs rather than
+  reading all console output.
+
+  ## Alerts and dialogs
+
+  IMPORTANT: Do not trigger JavaScript alerts, confirms, prompts, or browser
+  modal dialogs through your actions. These browser dialogs block all further
+  browser events and will prevent the extension from receiving any subsequent
+  commands. Instead, when possible, use console.log for debugging and then use
+  the mcp__claude-in-chrome__read_console_messages tool to read those log
+  messages. If a page has dialog-triggering elements:
+  1. Avoid clicking buttons or links that may trigger alerts (e.g., "Delete"
+  buttons with confirmation dialogs)
+  2. If you must interact with such elements, warn the user first that this may
+  interrupt the session
+  3. Use mcp__claude-in-chrome__javascript_tool to check for and dismiss any
+  existing dialogs before proceeding
+
+  If you accidentally trigger a dialog and lose responsiveness, inform the user
+  they need to manually dismiss it in the browser.
+
+  ## Avoid rabbit holes and loops
+
+  When using browser automation tools, stay focused on the specific task. If
+  you encounter any of the following, stop and ask the user for guidance:
+  - Unexpected complexity or tangential browser exploration
+  - Browser tool calls failing or returning errors after 2-3 attempts
+  - No response from the browser extension
+  - Page elements not responding to clicks or input
+  - Pages not loading or timing out
+  - Unable to complete the browser task despite multiple approaches
+
+  Explain what you attempted, what went wrong, and ask how the user would like
+  to proceed. Do not keep retrying the same failing browser action or explore
+  unrelated pages without checking in first.
+
+  ## Tab context and session startup
+
+  IMPORTANT: At the start of each browser automation session, call
+  mcp__claude-in-chrome__tabs_context_mcp first to get information about the
+  user's current browser tabs. Use this context to understand what the user
+  might want to work with before creating new tabs.
+
+  Never reuse tab IDs from a previous/other session. Follow these guidelines:
+  1. Only reuse an existing tab if the user explicitly asks to work with it
+  2. Otherwise, create a new tab with mcp__claude-in-chrome__tabs_create_mcp
+  3. If a tool returns an error indicating the tab doesn't exist or is invalid,
+  call tabs_context_mcp to get fresh tab IDs
+  4. When a tab is closed by the user or a navigation error occurs, call
+  tabs_context_mcp to see what tabs are available</browser_instruction>
+
+> requirements and scenario for a cli tool.
+
+  Your team's meeting notes pile up as markdown files. Action items get lost,
+  and follow-up emails are written late or not at all. You will build a small
+  CLI tool, actiontrack, that reads meeting notes, tracks the action items, and
+  drafts follow-up emails for review.
+
+  What you build
+
+  A CLI with four commands:
+
+  1. actiontrack ingest <folder> parses every .md meeting note in the folder.
+  Each note has
+     a date, attendees and free- appear as lines like - [ ]Priya to send the
+  revised quote by Friday. The tool stores them with owner, task, due
+     date (resolved to a real daurce file and status.
+  2. actiontrack list shows items. Filters: --owner, --status
+  open|done|overdue,
+     --due-before <date>. Overdu
+  3. actiontrack done <id> marks an item as done.
+  4. actiontrack followup <ownerper owner covering their openand overdue items,
+  and creates a Gmail draft through the Gmail MCP connector. It never sends.
+
+  Edge cases the tool must handl
+  Duplicate items repeated across several meetings.
+  Items with no owner or no da
+  Two people with the same first name.
+  Malformed notes (skip them and report, don't crash).
+  A sample notes/ folder with 30+ files is provided. Several are long and
+  messy, and a few are deliberately malformed.
+
+  if there are any gaps/open questions then ask them to me
+
+  Searched for 1 pattern, ran 1 shell command (ctrl+o to expand)
+
+● Written for: you, as the basis for a requirements and scenario doc. I skimmed
+  the notes/ folder so the gaps below come from the real data. I haven't written
+  any code.
+
+  1. Purpose
+
+  Meeting notes pile up as markdown. Action items get lost and follow-ups are
+  late or never sent. actiontrack extracts action items from the notes, tracks
+  their status, and drafts follow-up emails as Gmail drafts for a human to
+  review. It never sends.
+
+  2. Functional requirements
+
+  FR-1 ingest <folder>
+  - Parse every .md note in the folder and ignore other file types.
+  - Extract the meeting date, the attendees, and each action item (owner, task,
+    due date, source file, status).
+  - Resolve relative due dates ("by Friday", "mid-October") to real dates, using
+    the meeting date as the anchor.
+  - Dedupe items repeated across meetings.
+  - Re-running ingest must be idempotent. It must not create duplicates or reset
+    items already marked done.
+  - Print a summary: files parsed, items added, items skipped as duplicates, and
+    notes skipped as malformed with the reason for each.
+
+  FR-2 list
+  - Filters: --owner, --status open|done|overdue, --due-before <date>. They can
+    be combined.
+  - Overdue means open and due before today. It is computed at read time, not
+    stored.
+  - Output columns: id, owner, task, due, status, source file.
+  - Items with no owner or no due date still appear, clearly labelled.
+
+  FR-3 done <id>
+  - Marks the item done. An unknown id gives a clear error.
+  - Marking an already-done item is a no-op with a message.
+
+  FR-4 followup <owner>
+  - Builds one email per owner covering their open and overdue items, with
+    overdue items listed first.
+  - Creates a Gmail draft through the Gmail MCP connector. It never sends.
+  - If the owner is ambiguous or has no email address, it stops with a clear
+    message.
+
+  Non-functional
+  - Malformed notes never crash the tool.
+  - State persists locally between commands.
+  - Errors are clear and exit codes are meaningful.
+  - Behaviour is deterministic and testable. "Today" is injectable for tests.
+
+  3. Edge-case rules (proposed defaults)
+
+  Case: Duplicates
+  Proposed behaviour: Normalise the task text (case, punctuation, due
+    phrasing). Items with the same owner and a matching task are one item,
+    linked to all source meetings. Keep the earliest as the original and
+    record the later ones as "seen again".
+  ────────────────────────────────────────
+  Case: No owner
+  Proposed behaviour: Store as UNASSIGNED. Show it in list. It gets no
+    follow-up email, but is flagged in the ingest report.
+  ────────────────────────────────────────
+  Case: No due date
+  Proposed behaviour: Store with a null due date. It is never overdue. Show
+    "no date".
+  ────────────────────────────────────────
+  Case: Same first name
+  Proposed behaviour: Resolve to a full name using that meeting's attendee
+    list. If exactly one match, use it. If several match, mark the owner
+    ambiguous and don't guess.
+  ────────────────────────────────────────
+  Case: Malformed note
+  Proposed behaviour: Skip it, report the filename and reason, and continue.
+
+  4. What the sample data shows
+
+  - Duplicate items: items recur across the weekly series, and the same task is
+    often worded differently.
+  - Done checkboxes: - [x] and - [X] appear, so done-state is read from the
+    source, and re-ingest must not overwrite local status.
+  - Other formats: items also appear as * [ ], + [ ], nested sub-items, a
+    markdown table, and ACTION: lines, in addition to - [ ].
+  - Date formats: frontmatter-style date: and attendees: [..] variants appear.
+    Dates come as 9 September 2026, Monday, 14 September 2026, and sometime last
+    week.
+  - Due-date phrasing: "by Friday", "Oct 3rd", "15 October", "7 Oct",
+    "mid-October", "EOD", "tomorrow", "from 9 Oct".
+  - Ambiguous owners: "Priya" (Nair or Shah), "Rahul" (Mehta or Verma), "Priya
+    N.", "Everyone", and one note with no names at all.
+  - Non-notes and junk:
+    - scratch.md is binary.
+    - untitled.md has no header, date or attendees.
+    - 2026-09-09-notes-final-v2.md is empty.
+    - A .txt draft contains a checkbox but isn't a meeting note.
+
+  5. Scenarios (acceptance tests)
+
+  1. Happy path: ingest the folder. The summary shows 30+ files, N items, and
+     the malformed notes skipped with reasons. Exit code is 0.
+  2. Idempotent re-ingest: ingest, run done 5, ingest again. There are no new
+     duplicates and item 5 is still done.
+  3. Relative date: "Priya to send the quote by Friday" in a note dated
+     2026-09-01 (a Tuesday) becomes due 2026-09-04.
+  4. Overdue: with today = 2026-11-24, any open item due before that shows as
+     overdue. A done item with a past due date does not.
+  5. Combined filter: list --owner "Karan Joshi" --status overdue --due-before
+     2026-10-15 returns only the matching items.
+  6. Duplicate merge: the same quote task appears in three weekly notes with
+     different wording. It shows once, with all three sources.
+  7. Ambiguous name: the offsite note's "Priya to own the hiring plan" is
+     flagged ambiguous. Both Priyas were present, so it isn't guessed. In the
+     go/no-go note, "Priya N." resolves to Priya Nair.
+  8. No owner or no date: the item is listed, labelled, and excluded from
+     follow-ups. It is mentioned in the ingest report.
+  9. Malformed notes: the empty file, the binary scratch.md, untitled.md, and
+     the non-notes are skipped and reported. The other files are still
+     processed.
+  10. Follow-up: followup "Karan Joshi" creates one Gmail draft with overdue
+      items first, then open ones. Nothing is sent. The tool prints a
+      confirmation with the draft id.
+  11. Follow-up failure: if the Gmail connector is unauthorised or unavailable,
+      it exits with a clear message and makes no partial side effects.
+  12. Bad input: done 9999 gives "no such item". followup "Priya" lists the
+      matching Priyas and asks the user to pick one.
+
+  6. Open questions
+
+  Tooling
+  1. Language and runtime? Python or Node/TypeScript? I'd suggest Python with
+     argparse or click.
+  2. Storage? SQLite or a JSON file? I'd suggest SQLite, stored in .actiontrack/
+     next to the notes or in the user's home directory.
+  3. Gmail integration: the Gmail connector in this session needs authorising
+     before drafts can be created. For the CLI itself, how should it reach the
+     Gmail MCP connector? Options are an MCP client from the CLI, or the CLI
+     emits the email and I create the draft through the session. Which do you
+     want?
+
+  Behaviour
+  4. Email addresses: where do they come from? The notes only have names. Should
+  I use a people.json mapping, or draft with the To field blank?
+  5. "Today": use the real system date (2026-11-24), which makes nearly
+  everything overdue, or a --today override for demos?
+  6. Dedupe strictness: is fuzzy matching acceptable (for example "send the
+  revised quote to Acme" equals "send Acme the revised quote")? If so, what is
+  the risk tolerance for wrongly merging items?
+  7. Status conflicts: if a later note shows [x] for an item still open locally
+  (or the reverse), should the note win or the local state?
+  8. Unparseable dates: "sometime last week" as a meeting date. Skip the whole
+  note, or fall back to the filename date? I'd suggest the filename date,
+  flagged as a warning.
+  9. Unresolvable due dates: "mid-October" and "EOD". Should I use a fixed rule
+  (for example mid-October = the 15th, EOD = the meeting date), or store them as
+  no date?
+  10. "Everyone to submit goals": expand to one item per attendee, store as
+  owner "Everyone", or treat it as unowned?
+  11. Items outside a checklist: should I also parse table rows and ACTION:
+  lines, or only - [ ] style checkboxes as the brief says? I'd suggest parsing
+  all of them.
+  12. Ids: short integers (easy to type) are fine, but are they stable across
+  re-ingest? I'd suggest a stable assigned id that is never reused.
+  13. Follow-up content: include the source meeting and its date for each item?
+  Any required tone or template? Should followup accept --all?
+  14. Overdue grace: is "due today" overdue, or only strictly past?
+
+  My recommended defaults are SQLite, Python, today's date overridable with
+  --today, and a people.json for emails. Answer whichever of these you care
+  about, and I'll take the rest as proposed.
+
+> gmail is connected now through mcp
+  use node/typescript
+  json file for storage
+
+● Write(REQUIREMENTS.md)
+  ⎿  Wrote 62 lines to REQUIREMENTS.md
+       1 # actiontrack: Requirements and Scenarios
+       2
+       3 ## Decisions
+       4 - Node.js with TypeScript.
+       5 - Storage is a single JSON file, `.actiontrack/store.json`. Writ
+         es are atomic (write to a temp file, then rename).
+       6 - Gmail drafts are created through the Gmail MCP connector (`cre
+         ate_draft`). The tool never calls `send_message`.
+       7 - "Today" is the system date. A `--today YYYY-MM-DD` override ex
+         ists for tests and demos.
+     … +55 lines (ctrl+o to expand)
+
+> dont code yet
+
+● Understood, I haven't written any code. I only wrote the requirements doc,
+  REQUIREMENTS.md, which records your three decisions (Node/TypeScript, JSON
+  file storage, Gmail through MCP). For everything else I used my proposed
+  defaults.
+
+  Two questions still block the design. Everything else I'll take as proposed in
+  the doc.
+
+  1. How does the CLI create the Gmail draft? A standalone Node CLI can't call
+     the Gmail connector that's attached to this Claude session. The options
+     are:
+     - A (my recommendation): followup builds the email and saves it as a JSON
+       payload. Claude then creates the draft through the Gmail MCP. The CLI
+       itself never touches Gmail, so it can't send by accident.
+     - B: The CLI acts as an MCP client and calls Gmail itself. This is more
+       self-contained, but it needs its own OAuth and server setup, and that's
+       out of scope for a small tool.
+     - C: The CLI calls Claude (Agent SDK) and has it create the draft. This is
+       more moving parts than the task needs.
+  2. Recipient emails: Is a people.json mapping (full name to email) acceptable?
+     The notes only contain names. If someone is missing from the mapping, the
+     draft's To field would be blank. Or would you rather I use a different
+     source?
+
+  Tell me if you'd like to change any of the defaults in the doc. The ones most
+  likely to matter are:
+  - Resolving "Everyone" to one item per attendee.
+  - Mapping "mid-X" to the 15th.
+  - Making a bare "Priya" or "Rahul" ambiguous instead of guessing.
+
+  Once you answer these, I'll wait for your go-ahead before writing any code.
+
+> do the necessary setup for the project
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● The project setup is done and I haven't written any application code. I ran
+  npm install successfully, and tsc reports version 7.0.2. I haven't run a build
+  or a test, because there's nothing to build or test yet.
+
+  What's in place
+  - package.json:
+    - The package is ESM, with the actiontrack bin pointing at dist/cli.js.
+    - Scripts are build, dev (runs src/cli.ts through tsx), test (vitest) and
+      typecheck.
+    - It requires Node 20 or later, and your machine has 24.13.
+  - tsconfig.json: strict mode, NodeNext modules, src compiled to dist.
+  - .gitignore: ignores node_modules, dist, .actiontrack/ (the JSON store) and
+    logs.
+  - Empty folders src/, tests/ and outbox/, each with a .gitkeep.
+  - Dependencies:
+    - commander for the CLI.
+    - typescript, tsx, vitest and @types/node as dev dependencies.
+  - I didn't add any date-parsing library. I'd write the relative-date resolver
+    myself, so it's easy to test.
+
+  Still blocking
+  - The Gmail question: the CLI can't call the Gmail connector itself. My
+    recommendation is option A. followup writes the email as a JSON payload, and
+    Claude then creates the draft through Gmail MCP. I created outbox/ for
+    that, but if you pick a different option I'll remove it.
+  - Whether a people.json mapping of names to emails is acceptable.
+
+  Once you've answered those and given the go-ahead, I'll start on the code.
+
+> go with option A, people.json is fine
+
+● Update(REQUIREMENTS.md)
+  ⎿  Added 3 lines, removed 3 lines
+      57  11. If Gmail is unavailable, the command exits non-zero with a
+          clear message and no partial state.
+      58  12. `done 9999` gives "no such item". `followup Priya` lists th
+          e matching Priyas and asks the user to choose.
+      59 
+      60 -## Open items                                                  
+      61 -- **Gmail from a CLI:** see the question in the reply.         
+      62 -- **Recipient emails:** a `people.json` mapping of full name to
+         - email (proposed). The draft To field is blank if a person is m
+         -issing.                                                        
+      60 +## Resolved                                                    
+      61 +- **Gmail (option A):** `followup <owner>` writes the email as 
+         +a JSON payload (`to`, `subject`, `body`) to `outbox/`. Claude t
+         +hen creates the draft through the Gmail MCP `create_draft`. The
+         + CLI never talks to Gmail and never sends.                     
+      62 +- **Recipient emails:** `people.json` maps full name to email. 
+         +If a person is missing, the To field is blank and the CLI warns
+         +.                                                              
+
+● I've added both decisions to REQUIREMENTS.md.
+
+  - Gmail (option A): followup <owner> writes the email as a JSON payload (to,
+    subject, body) to outbox/. I then create the Gmail draft through the Gmail
+    MCP's create_draft. The CLI never talks to Gmail and never sends.
+  - Emails: people.json maps full name to email. If a person is missing, the To
+    field is blank and the CLI prints a warning.
+
+  Everything else in the doc stays as I proposed it. You told me not to code
+  yet, so I haven't. Do you want me to start building now?
+
+> break the reuquirements down into modules and then for each module create a
+  folder and inside that folder i want a plan, spec and task mds for each
+  module. only after i review those and give you a approval you will start
+  implementing
+
+  Ran 1 shell command · 1 failed (ctrl+o to expand)
+
+● Write(modules\README.md)
+  ⎿  Wrote 31 lines to modules\README.md
+       1 # Module breakdown
+       2
+       3 Each module folder holds `plan.md` (why and how), `spec.md` (exa
+         ct behaviour and API), and `tasks.md` (checklist). Requirements
+         live in `../REQUIREMENTS.md`.
+       4
+       5 | # | Module | Responsibility | Depends on |
+       6 |---|---|---|---|
+       7 | 01 | core | types, JSON store, ids, clock, config, errors | no
+         ne |
+     … +24 lines (ctrl+o to expand)
+
+● Write(modules\01-core\plan.md)
+  ⎿  Wrote 29 lines to modules\01-core\plan.md
+       1 # 01-core: Plan
+       2
+       3 ## Purpose
+       4 Shared foundation for all other modules: types, the JSON store,
+         id allocation, and the clock ("today").
+       5
+       6 ## Scope
+       7 - Domain types (`Item`, `Source`, `Store`).
+       8 - JSON file store: load, save (atomic), schema version.
+       9 - Stable id allocation (never reused).
+     … +20 lines (ctrl+o to expand)
+
+● Write(modules\01-core\spec.md)
+  ⎿  Wrote 48 lines to modules\01-core\spec.md
+      1 # 01-core: Spec
+      2
+      3 ## Types (`src/core/types.ts`)
+      4 ```ts
+      5 type ISODate = string;              // "YYYY-MM-DD"
+      6 type ItemStatus = "open" | "done";
+      7 type OwnerStatus = "resolved" | "unassigned" | "ambiguous";
+      8
+      9 interface Source { file: string; meetingDate: ISODate; line: numb
+        er; }
+     … +39 lines (ctrl+o to expand)
+
+● Write(modules\01-core\tasks.md)
+  ⎿  Wrote 9 lines to modules\01-core\tasks.md
+      1 # 01-core: Tasks
+      2
+      3 - [ ] C1. Create `src/core/types.ts` with the types in the spec.
+      4 - [ ] C2. Create `src/core/errors.ts` (`UsageError`, `StoreError`
+        , `NotFoundError`) with exit codes.
+      5 - [ ] C3. Create `src/core/store.ts`: `loadStore`, `saveStore` (a
+        tomic), `allocateId`.
+      6 - [ ] C4. Create `src/core/clock.ts`: `today(override?)` with dat
+        e validation.
+      7 - [ ] C5. Create `src/core/config.ts`: default paths and env over
+     … +3 lines (ctrl+o to expand)
+
+● Write(modules\02-parser\plan.md)
+  ⎿  Wrote 27 lines to modules\02-parser\plan.md
+      1 # 02-parser: Plan
+      2
+      3 ## Purpose
+      4 Turn the text of one meeting note into a structured result: meeti
+        ng header (title, date, attendees) and a list of raw action items
+        . It does no date resolution, owner resolution, or dedupe.
+      5
+      6 ## Scope
+      7 - Read header fields in the variants seen in the sample notes.
+      8 - Extract action items from all the formats in the sample notes.
+     … +19 lines (ctrl+o to expand)
+
+● Write(modules\02-parser\spec.md)
+  ⎿  Wrote 76 lines to modules\02-parser\spec.md
+       1 # 02-parser: Spec
+       2
+       3 ## Public API (`src/parser/parseNote.ts`)
+       4 ```ts
+       5 interface RawItem {
+       6   line: number;
+       7   checked: boolean;            // [x] or [X]
+       8   ownerRaw: string | null;
+       9   task: string;
+      10   dueRaw: string | null;
+     … +66 lines (ctrl+o to expand)
+
+● Write(modules\02-parser\tasks.md)
+  ⎿  Wrote 12 lines to modules\02-parser\tasks.md
+       1 # 02-parser: Tasks
+       2
+       3 - [ ] P1. Create `src/parser/types.ts` (`RawItem`, `ParsedNote`,
+          `ParseOutcome`).
+       4 - [ ] P2. Implement the input guards: empty, NUL bytes, invalid
+         UTF-8.
+       5 - [ ] P3. Implement header parsing: title, `Date:`/`date:`, `Att
+         endees:` in plain and bracket forms.
+       6 - [ ] P4. Implement checkbox item extraction for `-`, `*`, `+` a
+         nd `[ ]`/`[x]`/`[X]`, with indent depth.
+     … +6 lines (ctrl+o to expand)
+
+● Modules 01 and 02 are written. Next are 03 to 05.
+
+● Write(modules\03-dates\plan.md)
+  ⎿  Wrote 26 lines to modules\03-dates\plan.md
+      1 # 03-dates: Plan
+      2
+      3 ## Purpose
+      4 Turn raw date text into ISO dates: the meeting date from the head
+        er (or filename), and due phrases relative to the meeting date.
+      5
+      6 ## Scope
+      7 - Meeting date parsing, with a filename fallback.
+      8 - Due phrase resolution relative to the meeting date.
+      9 - Overdue calculation helper.
+     … +17 lines (ctrl+o to expand)
+
+● Write(modules\03-dates\spec.md)
+  ⎿  Wrote 45 lines to modules\03-dates\spec.md
+      1 # 03-dates: Spec
+      2
+      3 ## API (`src/dates/`)
+      4 ```ts
+      5 parseMeetingDate(dateRaw: string | null, filename: string):
+      6   { date: ISODate; warning?: string } | { date: null; warning: st
+        ring }
+      7
+      8 resolveDue(dueRaw: string | null, meetingDate: ISODate):
+      9   { due: ISODate | null; warning?: string }
+     … +36 lines (ctrl+o to expand)
+
+● Write(modules\03-dates\tasks.md)  ⎿  Wrote 10 lines to modules\03-dates\tasks.md
+       1 # 03-dates: Tasks
+       2
+       3 - [ ] D1. Create UTC date helpers: parse ISO, format ISO, add da
+         ys, weekday.
+       4 - [ ] D2. Implement `parseMeetingDate` with the three header for
+         mats and the filename fallback.
+       5 - [ ] D3. Implement `resolveDue`: ISO, weekday names, tomorrow/t
+         oday/EOD.
+       6 - [ ] D4. Implement `resolveDue`: month-day forms (`Oct 3rd`, `7
+          Oct`, `15 October`) with year inference.
+     … +4 lines (ctrl+o to expand)
+
+● Write(modules\04-owners\plan.md)
+  ⎿  Wrote 27 lines to modules\04-owners\plan.md
+       1 # 04-owners: Plan
+       2
+       3 ## Purpose
+       4 Resolve the owner text in an item ("Priya", "Priya N.", "Everyon
+         e") to a full name using the meeting's attendee list, without gu
+         essing when it is ambiguous.
+       5
+       6 ## Scope
+       7 - Match raw owner text against attendees.
+       8 - Classify the result: resolved, unassigned, or ambiguous (with
+     … +20 lines (ctrl+o to expand)
+
+● Write(modules\04-owners\spec.md)
+  ⎿  Wrote 40 lines to modules\04-owners\spec.md
+       1 # 04-owners: Spec
+       2
+       3 ## API (`src/owners/`)
+       4 ```ts
+       5 interface OwnerResolution {
+       6   status: "resolved" | "unassigned" | "ambiguous";
+       7   owners: string[];       // resolved full names (several only f
+         or "Everyone")
+       8   candidates: string[];   // populated when ambiguous
+       9   warning?: string;
+     … +31 lines (ctrl+o to expand)
+
+● Write(modules\04-owners\tasks.md)
+  ⎿  Wrote 9 lines to modules\04-owners\tasks.md
+      1 # 04-owners: Tasks
+      2
+      3 - [ ] O1. Implement name normalisation and tokenising (case, whit
+        espace, trailing dot on initials).
+      4 - [ ] O2. Implement `resolveOwner` rules 1 to 3 (empty, Everyone,
+         exact).
+      5 - [ ] O3. Implement rules 4 and 5 (initial match, first-name matc
+        h, ambiguity with candidates).
+      6 - [ ] O4. Implement rule 6 (fallback to `knownPeople`).
+      7 - [ ] O5. Implement `loadPeople` with the missing-file and invali
+     … +3 lines (ctrl+o to expand)
+
+● Write(modules\05-dedupe\plan.md)
+  ⎿  Wrote 26 lines to modules\05-dedupe\plan.md
+      1 # 05-dedupe: Plan
+      2
+      3 ## Purpose
+      4 Decide whether a newly parsed item is the same as one already in
+        the store, and merge them if so, so a task repeated across meetin
+        gs shows once with all its sources.
+      5
+      6 ## Scope
+      7 - Normalise task text into a `taskKey`.
+      8 - Match new items against existing ones.
+     … +18 lines (ctrl+o to expand)
+
+● Write(modules\05-dedupe\spec.md)
+  ⎿  Wrote 42 lines to modules\05-dedupe\spec.md
+       1 # 05-dedupe: Spec
+       2
+       3 ## API (`src/dedupe/`)
+       4 ```ts
+       5 normaliseTask(task: string): string               // the taskKey
+       6 similarity(keyA: string, keyB: string): number    // 0..1
+       7 findMatch(candidate: NewItem, existing: Item[]): Item | null
+       8 mergeInto(existing: Item, incoming: NewItem): { changed: boolean
+         ; notes: string[] }
+       9 const SIMILARITY_THRESHOLD = 0.8
+     … +33 lines (ctrl+o to expand)
+
+● Write(modules\05-dedupe\tasks.md)
+  ⎿  Wrote 10 lines to modules\05-dedupe\tasks.md
+       1 # 05-dedupe: Tasks
+       2
+       3 - [ ] E1. Implement `normaliseTask` with the stop-word list.
+       4 - [ ] E2. Implement `similarity` (token-set Jaccard) and the `SI
+         MILARITY_THRESHOLD` constant.
+       5 - [ ] E3. Implement `findMatch` with the owner rules and the tie
+         -breaking.
+       6 - [ ] E4. Implement `mergeInto` for sources, status, due, owner,
+          and the notes output.
+       7 - [ ] E5. Handle first-ingest `[x]` items (stored done).
+     … +3 lines (ctrl+o to expand)
+
+● Modules 03 to 05 are written. Next are 06 to 08.
+
+● Write(modules\06-ingest\plan.md)
+  ⎿  Wrote 26 lines to modules\06-ingest\plan.md
+       1 # 06-ingest: Plan
+       2
+       3 ## Purpose
+       4 Implement `ingest <folder>`: orchestrate parser, dates, owners a
+         nd dedupe over a folder, update the store, and print a report.
+       5
+       6 ## Scope
+       7 - List `.md` files in the folder (non-recursive).
+       8 - Per file: parse, resolve date, resolve owners, resolve due, th
+         en dedupe or insert.
+     … +18 lines (ctrl+o to expand)
+
+● Write(modules\06-ingest\spec.md)
+  ⎿  Wrote 55 lines to modules\06-ingest\spec.md
+       1 # 06-ingest: Spec
+       2
+       3 ## Command
+       4 `actiontrack ingest <folder>`
+       5
+       6 ## Behaviour
+       7 1. If `<folder>` does not exist or is not a directory: `UsageErr
+         or` (exit 2). Nothing is written.
+       8 2. List files ending in `.md`, sorted by name. Other files are l
+         isted in the report as `ignored`.
+     … +47 lines (ctrl+o to expand)
+
+● Write(modules\06-ingest\tasks.md)
+  ⎿  Wrote 11 lines to modules\06-ingest\tasks.md
+       1 # 06-ingest: Tasks
+       2
+       3 - [ ] I1. Implement folder validation and the file listing (sort
+         ed, `.md` only, ignored list).
+       4 - [ ] I2. Implement the per-file pipeline: parse, date, items, o
+         wner, due.
+       5 - [ ] I3. Implement "Everyone" expansion.
+       6 - [ ] I4. Integrate `findMatch` / `mergeInto` / insert with `all
+         ocateId`.
+       7 - [ ] I5. Build the `IngestReport` and the stdout formatter.
+     … +4 lines (ctrl+o to expand)
+
+● Write(modules\07-list\plan.md)
+  ⎿  Wrote 25 lines to modules\07-list\plan.md
+      1 # 07-list: Plan
+      2
+      3 ## Purpose
+      4 Implement `list`: show tracked items with filters and a readable
+        table.
+      5
+      6 ## Scope
+      7 - Filters: `--owner`, `--status open|done|overdue`, `--due-before
+         <date>`, combinable.
+      8 - Table output.
+     … +17 lines (ctrl+o to expand)
+
+● Write(modules\07-list\spec.md)
+  ⎿  Wrote 33 lines to modules\07-list\spec.md
+       1 # 07-list: Spec
+       2
+       3 ## Command
+       4 `actiontrack list [--owner <name>] [--status open|done|overdue]
+         [--due-before <date>]`
+       5
+       6 ## Filters (combined with AND)
+       7 - `--owner <name>`: case-insensitive. A full name matches exactl
+         y. A single token matches the first or last name of resolved own
+         ers. The special values `unassigned` and `ambiguous` match items
+     … +27 lines (~1 KB) (ctrl+o to expand)
+
+● Write(modules\07-list\tasks.md)
+  ⎿  Wrote 9 lines to modules\07-list\tasks.md
+      1 # 07-list: Tasks
+      2
+      3 - [ ] L1. Implement `filterItems` for owner, status and due-befor
+        e, with validation.
+      4 - [ ] L2. Implement the owner matching including `unassigned` and
+         `ambiguous`.
+      5 - [ ] L3. Implement the sort order.
+      6 - [ ] L4. Implement the table formatter (column widths, truncatio
+        n, labels, footer).
+      7 - [ ] L5. Tests: each filter alone, combined filters, the empty r
+     … +3 lines (ctrl+o to expand)
+
+● Write(modules\08-done\plan.md)
+  ⎿  Wrote 23 lines to modules\08-done\plan.md
+       1 # 08-done: Plan
+       2
+       3 ## Purpose
+       4 Implement `done <id>`: mark an item done.
+       5
+       6 ## Scope
+       7 Look up by id, set status and `doneAt`, save, report.
+       8
+       9 ## Out of scope
+      10 Un-marking items (not required) and bulk operations.
+     … +13 lines (ctrl+o to expand)
+
+● Write(modules\08-done\spec.md)
+  ⎿  Wrote 17 lines to modules\08-done\spec.md
+       1 # 08-done: Spec
+       2
+       3 ## Command
+       4 `actiontrack done <id>`
+       5
+       6 ## Behaviour
+       7 - `<id>` must be a positive integer, otherwise `UsageError` (exi
+         t 2): `id must be a positive integer`.
+       8 - No item with that id: `NotFoundError` (exit 1): `no such item:
+          <id>`.
+     … +9 lines (ctrl+o to expand)
+
+● Write(modules\08-done\tasks.md)
+  ⎿  Wrote 6 lines to modules\08-done\tasks.md
+      1 # 08-done: Tasks
+      2
+      3 - [ ] N1. Implement id validation.
+      4 - [ ] N2. Implement `markDone(store, id, now)` as a pure function
+         returning the result kind (`marked`, `already`, `missing`).
+      5 - [ ] N3. Wire the command: load, call, save only on `marked`, pr
+        int messages.
+      6 - [ ] N4. Tests: marks done, already done, unknown id, invalid id
+        , `doneAt` unchanged on repeat.
+
+● Modules 06 to 08 are written. Last are 09 and 10.
+
+● Write(modules\09-followup\plan.md)
+  ⎿  Wrote 30 lines to modules\09-followup\plan.md
+       1 # 09-followup: Plan
+       2
+       3 ## Purpose
+       4 Implement `followup <owner>`: build one email per owner covering
+          their open and overdue items, and hand it off for Gmail draftin
+         g. The CLI never sends and never talks to Gmail.
+       5
+       6 ## Scope
+       7 - Resolve the `<owner>` argument to exactly one person.
+       8 - Select that person's open items and split overdue from open.
+     … +22 lines (ctrl+o to expand)
+
+● Write(modules\09-followup\spec.md)
+  ⎿  Wrote 63 lines to modules\09-followup\spec.md
+       1 # 09-followup: Spec
+       2
+       3 ## Command
+       4 `actiontrack followup <owner> [--force]`
+       5
+       6 ## Owner resolution
+       7 - `<owner>` is matched against the owners of stored items (resol
+         ved owners only) using the same rules as `list --owner`.
+       8 - Exactly one distinct person: proceed.
+       9 - Several people (e.g. `Priya`): print `"Priya" is ambiguous: Pr
+     … +55 lines (~2 KB) (ctrl+o to expand)
+
+● Write(modules\09-followup\tasks.md)
+  ⎿  Wrote 10 lines to modules\09-followup\tasks.md
+       1 # 09-followup: Tasks
+       2
+       3 - [ ] F1. Implement owner argument resolution (single, ambiguous
+         , none).
+       4 - [ ] F2. Implement item selection and the overdue/open split wi
+         th sorting.
+       5 - [ ] F3. Implement `renderEmail` (subject and body) with empty-
+         section handling.
+       6 - [ ] F4. Implement the payload writer, the `people.json` lookup
+         , the missing-email warning, and the `--force` check.
+     … +4 lines (ctrl+o to expand)
+
+● Write(modules\10-cli\plan.md)  ⎿  Wrote 26 lines to modules\10-cli\plan.md
+       1 # 10-cli: Plan
+       2
+       3 ## Purpose
+       4 The command-line entry point: argument parsing, wiring the four
+         commands to their modules, global options, error handling and ex
+         it codes.
+       5
+       6 ## Scope
+       7 - `src/cli.ts` using `commander`.
+       8 - Global options and config resolution.
+     … +18 lines (ctrl+o to expand)
+
+● Write(modules\10-cli\spec.md)
+  ⎿  Wrote 39 lines to modules\10-cli\spec.md
+      1 # 10-cli: Spec
+      2
+      3 ## Commands
+      4 ```
+      5 actiontrack ingest <folder>
+      6 actiontrack list [--owner <name>] [--status open|done|overdue] [-
+        -due-before <date>]
+      7 actiontrack done <id>
+      8 actiontrack followup <owner> [--force]
+      9 ```
+     … +30 lines (ctrl+o to expand)
+
+● Write(modules\10-cli\tasks.md)
+  ⎿  Wrote 9 lines to modules\10-cli\tasks.md
+      1 # 10-cli: Tasks
+      2
+      3 - [ ] G1. Create `src/cli.ts` with `commander`, the four commands
+         and the global options.
+      4 - [ ] G2. Implement the central error handler and the exit-code m
+        apping.
+      5 - [ ] G3. Wire `ingest`, `list`, `done`, `followup` as thin handl
+        ers.
+      6 - [ ] G4. Add the shebang and verify that `build` and `npm link`
+        work.
+     … +3 lines (ctrl+o to expand)
+
+● I've split the requirements into 10 modules in modules/. Each has a plan.md,
+  spec.md and tasks.md. I haven't written any application code and I'll wait for
+  your approval. A first attempt failed with a command-length error, so I
+  re-wrote everything file by file. All 31 files (30 module files plus an
+  overview) were created successfully, but I haven't re-read them since.
+
+  modules/README.md has the dependency table, the suggested build order, and a
+  table mapping each requirement to its modules.
+
+  ┌─────┬──────────────────────────┬────────────────────────────────────────┐
+  │  #  │          Module          │                 Covers                 │
+  ├─────┼──────────────────────────┼────────────────────────────────────────┤
+  │ 01  │ core (modules/01-core/)  │ types, JSON store with atomic writes,  │
+  │     │                          │ ids, clock (--today), config, errors   │
+  ├─────┼──────────────────────────┼────────────────────────────────────────┤
+  │     │ parser                   │ header and item extraction from one    │
+  │ 02  │ (modules/02-parser/)     │ note, plus skip reasons for malformed  │
+  │     │                          │ notes                                  │
+  ├─────┼──────────────────────────┼────────────────────────────────────────┤
+  │     │ dates                    │ meeting date, due phrases like         │
+  │ 03  │ (modules/03-dates/)      │ "Friday", "Oct 3rd" and "mid-October", │
+  │     │                          │  and the overdue rule                  │
+  ├─────┼──────────────────────────┼────────────────────────────────────────┤
+  │ 04  │ owners                   │ same-first-name handling, "Everyone",  │
+  │     │ (modules/04-owners/)     │ people.json                            │
+  ├─────┼──────────────────────────┼────────────────────────────────────────┤
+  │ 05  │ dedupe                   │ task normalisation, matching and       │
+  │     │ (modules/05-dedupe/)     │ merging                                │
+  ├─────┼──────────────────────────┼────────────────────────────────────────┤
+  │ 06  │ ingest                   │ the ingest command and its report      │
+  │     │ (modules/06-ingest/)     │                                        │
+  ├─────┼──────────────────────────┼────────────────────────────────────────┤
+  │ 07  │ list (modules/07-list/)  │ the list command and its filters       │
+  ├─────┼──────────────────────────┼────────────────────────────────────────┤
+  │ 08  │ done (modules/08-done/)  │ the done command                       │
+  ├─────┼──────────────────────────┼────────────────────────────────────────┤
+  │     │ followup                 │ the followup command, the outbox/      │
+  │ 09  │ (modules/09-followup/)   │ payload, and the Gmail hand-off (never │
+  │     │                          │  sends)                                │
+  ├─────┼──────────────────────────┼────────────────────────────────────────┤
+  │ 10  │ cli (modules/10-cli/)    │ commander wiring, exit codes, README,  │
+  │     │                          │ end-to-end tests                       │
+  └─────┴──────────────────────────┴────────────────────────────────────────┘
+
+  What I'd check first when reviewing
+  - Dedupe threshold (05): I set the similarity threshold at 0.8 as a first
+    guess. I'd tune it against the real notes with you before locking it in
+    (task E8).
+  - Spec 02 sample expectations: I've only read some of the 36 files. The spec's
+    expected results for the sample folder are provisional until the parser
+    runs over all of them.
+  - Merge rule (05): a [x] in a later note does not close an item that is still
+    open locally. It adds a note to the ingest report instead. Say so if you'd
+    rather the note win.
+  - Placeholder emails (04): people.json will be created with placeholder
+    example.com addresses. You'd need to replace them with real ones before
+    creating real drafts.
+
+  Tell me what to change, or approve and I'll start with 01-core.
+
+> /init
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Write(CLAUDE.md)
+  ⎿  Wrote 43 lines to CLAUDE.md
+       1 # CLAUDE.md
+       2
+       3 This file provides guidance to Claude Code (claude.ai/code) when
+          working with code in this repository.
+       4
+       5 ## Project status
+       6
+       7 `actiontrack` is a Node/TypeScript CLI that reads markdown meeti
+         ng notes, tracks action items, and prepares follow-up emails. **
+         No application code exists yet.** Only the project setup (`packa
+     … +37 lines (~4 KB) (ctrl+o to expand)
+
+● I created CLAUDE.md. There was no existing CLAUDE.md, README, or Cursor,
+  Copilot, Codex or Gemini config to merge in.
+
+  It covers:
+  - Status: no application code exists yet. Implementation waits for your
+    approval of the module docs, and REQUIREMENTS.md and modules/ are the source
+    of truth.
+  - Commands: run, build, typecheck and test, including how to run a single test
+    file or test name. No linter is configured, and I noted that.
+  - Architecture: the ingest pipeline and the decisions that span modules. These
+    are Gmail only through the outbox/ payload, overdue computed at read time,
+    never guessing an ambiguous owner, and local state winning over notes. It
+    also covers dedupe, storage, and the exit codes.
+  - Sample data: the messy cases in notes/, so parser changes get checked
+    against the real files.
+
+  The architecture and decisions sections describe the planned design, not code
+  that exists. Update the file once implementation starts.
+
+> start implementing module 1
+
+  Ran 1 shell command · 1 failed (ctrl+o to expand)
+
+● Write(src\core\types.ts)
+  ⎿  Wrote 40 lines to src\core\types.ts
+      1 export type ISODate = string; // "YYYY-MM-DD"
+      2 export type ItemStatus = "open" | "done";
+      3 export type OwnerStatus = "resolved" | "unassigned" | "ambiguous"
+        ;
+      4
+      5 export interface Source {
+      6   file: string;
+      7   meetingDate: ISODate;
+      8   line: number;
+      9 }
+     … +31 lines (ctrl+o to expand)
+
+● Write(src\core\errors.ts)
+  ⎿  Wrote 23 lines to src\core\errors.ts
+       1 /** Errors carry the process exit code the CLI should use. */
+       2 export abstract class ActiontrackError extends Error {
+       3   abstract readonly exitCode: number;
+       4   constructor(message: string) {
+       5     super(message);
+       6     this.name = new.target.name;
+       7   }
+       8 }
+       9
+      10 /** Bad arguments or input from the user (exit 2). */
+     … +13 lines (ctrl+o to expand)
+
+● Write(src\core\store.ts)
+  ⎿  Wrote 76 lines to src\core\store.ts
+       1 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileS
+         ync } from "node:fs";
+       2 import { dirname } from "node:path";
+       3 import { StoreError } from "./errors.js";
+       4 import type { Store } from "./types.js";
+       5
+       6 export function emptyStore(): Store {
+       7   return { version: 1, nextId: 1, items: [] };
+       8 }
+       9
+     … +67 lines (ctrl+o to expand)
+
+● Write(src\core\clock.ts)
+  ⎿  Wrote 24 lines to src\core\clock.ts
+       1 import { UsageError } from "./errors.js";
+       2 import type { ISODate } from "./types.js";
+       3
+       4 /** True for a real calendar date written as YYYY-MM-DD. */
+       5 export function isValidISODate(value: string): boolean {
+       6   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+       7   if (!m) return false;
+       8   const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+       9   const date = new Date(Date.UTC(y, mo - 1, d));
+      10   return date.getUTCFullYear() === y && date.getUTCMonth() === m
+     … +15 lines (ctrl+o to expand)
+
+● Write(src\core\config.ts)
+  ⎿  Wrote 29 lines to src\core\config.ts
+       1 import { join } from "node:path";
+       2
+       3 export interface Config {
+       4   storePath: string;
+       5   peoplePath: string;
+       6   outboxDir: string;
+       7 }
+       8
+       9 export interface ConfigOverrides {
+      10   store?: string;
+     … +19 lines (ctrl+o to expand)
+
+● Write(tests\core\store.test.ts)
+  ⎿  Wrote 102 lines to tests\core\store.test.ts
+       1 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFil
+         eSync } from "node:fs";
+       2 import { tmpdir } from "node:os";
+       3 import { join } from "node:path";
+       4 import { afterEach, beforeEach, describe, expect, it } from "vit
+         est";
+       5 import { StoreError } from "../../src/core/errors.js";
+       6 import { allocateId, emptyStore, loadStore, saveStore } from "..
+         /../src/core/store.js";
+       7 import type { Item, Store } from "../../src/core/types.js";
+     … +95 lines (ctrl+o to expand)
+
+● Write(tests\core\clock.test.ts)
+  ⎿  Wrote 24 lines to tests\core\clock.test.ts
+       1 import { describe, expect, it } from "vitest";
+       2 import { isValidISODate, today } from "../../src/core/clock.js";
+       3 import { UsageError } from "../../src/core/errors.js";
+       4
+       5 describe("today", () => {
+       6   it("returns a valid override", () => {
+       7     expect(today("2026-11-24")).toBe("2026-11-24");
+       8   });
+       9
+      10   it.each(["2026-13-01", "2026-02-30", "24-11-2026", "tomorrow",
+     … +15 lines (ctrl+o to expand)
+
+● Write(tests\core\config.test.ts)
+  ⎿  Wrote 33 lines to tests\core\config.test.ts
+       1 import { join } from "node:path";
+       2 import { describe, expect, it } from "vitest";
+       3 import { resolveConfig } from "../../src/core/config.js";
+       4 import { NotFoundError, StoreError, UsageError } from "../../src
+         /core/errors.js";
+       5
+       6 describe("resolveConfig", () => {
+       7   const cwd = join("/work");
+       8
+       9   it("uses defaults relative to cwd", () => {
+     … +24 lines (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Update(tsconfig.json)
+  ⎿  Added 1 line
+       6      "outDir": "dist",
+       7      "rootDir": "src",
+       8      "strict": true,
+       9 +    "types": ["node"],                                         
+      10      "esModuleInterop": true,
+      11      "skipLibCheck": true,
+      12      "declaration": false,
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Module 01-core is implemented. npm run typecheck is clean and npm test passes
+  21 tests across 3 files. All seven tasks in modules/01-core/tasks.md (C1 to
+  C7) are ticked.
+
+  What's in src/core/
+  - types.ts (src/core/types.ts): Item, Source, Store and the status types,
+    exactly as in the spec.
+  - errors.ts (src/core/errors.ts): UsageError (exit 2), StoreError (exit 3) and
+    NotFoundError (exit 1).
+  - store.ts (src/core/store.ts): loadStore, saveStore and allocateId, plus an
+    emptyStore() helper.
+    - A missing file gives an empty store. Invalid JSON, a wrong shape or an
+      unknown version throws StoreError naming the path.
+    - Saves serialise first, write <path>.tmp, then rename over the target. A
+      failed save leaves the old file intact and removes the temp file.
+  - clock.ts (src/core/clock.ts): today(override?) and isValidISODate. It
+    rejects impossible dates such as 2026-02-30, and the system date is used
+    when there's no override.
+  - config.ts (src/core/config.ts): resolveConfig, with flag over env var over
+    default.
+
+  Two small additions beyond the spec
+  - loadStore also rejects a store where nextId is not above its highest item
+    id, since that would let an id be reused after hand-editing the file.
+  - tsconfig.json now has "types": ["node"]. TypeScript 7 doesn't pick up
+    @types/node on its own, and typecheck failed without it.
+
+  npm run typecheck only covers src/, so the test files are type-checked by
+  vitest's transform only if at all. The spec doesn't call for more, so I left
+  it.
+
+  Next in the build order is 03-dates, 04-owners and 02-parser, which are
+  independent of each other. Do you want me to start with one of them, or review
+  this module first?
+
+> stash these changes and do our first initial commit and push to main and then
+  create a new branch for this module and move these changes to over there
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● Main is pushed. Now the module branch with the saved changes restored.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Initial commit is on main and pushed. The module 01 changes are back in the
+  working tree on a new branch, feature/01-core. I didn't commit them there;
+  that's your call.
+
+  - main: commit 0d6d7ea is pushed to origin/main at
+    sanskruti-bhartal-coditas/ai-session-assessment. It holds the project setup,
+    REQUIREMENTS.md, CLAUDE.md, all modules/ docs, and the sample notes/.
+  - Module 01 changes: the repo had no commits, so git stash wasn't possible.
+    Instead I set the module 01 work aside in the scratchpad and committed main
+    without it. That meant leaving out src/core/ and tests/core/, taking the
+    "types": ["node"] line out of tsconfig.json, and unticking C1 to C7 in
+    modules/01-core/tasks.md. I then restored all of it on the new branch.
+  - Check on the branch: typecheck is clean and all 21 tests pass.
+  - Not touched: node_modules/, dist/ and .actiontrack/ are gitignored, so they
+    weren't committed.
+  - Local branch name: the local branch was master and I renamed it to main
+    before committing.
+
+  Should I commit feature/01-core and push it, then open a PR?
+
+> commit and push this branch
+  Ran 1 shell command (ctrl+o to expand)
+
+● I committed feature/01-core as d3a98f1 and pushed it to
+  origin/feature/01-core. The working tree is clean.
+
+  The commit has the src/core/ and tests/core/ files, the tsconfig.json change,
+  and the ticked tasks in modules/01-core/tasks.md.
+
+  I haven't opened a pull request. Should I open one against main?
+
+> create a test cases md file based on the spec file of module 1
+
+● Write(modules\01-core\test-cases.md)
+  ⎿  Wrote 90 lines to modules\01-core\test-cases.md
+       1 # 01-core: Test Cases
+       2
+       3 Derived from [spec.md](spec.md). Status shows whether a case is
+         automated in `tests/core/` today. `GAP` means the spec requires
+         it but no test covers it yet.
+       4
+       5 ## Store: `loadStore`
+       6
+       7 | ID | Case | Input / setup | Expected | Status |
+       8 |---|---|---|---|---|
+     … +82 lines (ctrl+o to expand)
+
+● I created modules/01-core/test-cases.md from the module 1 spec. It isn't
+  committed yet.
+
+  It has about 40 cases in tables with ID, setup, expected result, and status:
+  - Store load: S-01 to S-11.
+  - Store save: W-01 to W-07.
+  - Id allocation: A-01 to A-04.
+  - Clock: T-01 to T-10.
+  - Config: G-01 to G-06.
+  - Errors: E-01 to E-03.
+  - Acceptance criteria: the three from the spec, each mapped to the cases that
+    cover it.
+
+  Each case is marked as covered by an existing test in tests/core/ or as a gap.
+  Today there are 21 passing tests, and 13 cases are not yet automated.
+
+  These are the gaps I'd close first:
+  - W-07 (rename failure): this is the real atomic-write guarantee. The current
+    test only covers the failure before the temp file is written, not a failure
+    during the rename.
+  - A-04 (id reuse): the test would check that an id isn't reused after an item
+    is removed. That is a stated invariant.
+  - S-07, S-08, S-10 (store validation): these are cheap validation checks. The
+    spec only implies this behaviour ("wrong shape"), so please confirm I've
+    read it the way you intend before I turn them into tests.
+
+  Should I implement the 13 gap tests, and commit this file on feature/01-core?
+
+> implement the gap tests
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Update(tests\core\store.test.ts)
+  ⎿  Added 1 line, removed 2 lines
+      117    it("writes pretty-printed JSON with 2-space indent and a tra
+           iling newline", () => {
+      118      const s: Store = { version: 1, nextId: 2, items: [item(1)]
+            };
+      119      saveStore(path, s);
+      120 -    expect(readFileSync(path, "utf8")).toBe(JSON.stringify(s, 
+          -null, 2) + "                                                  
+      121 -");                                                           
+      120 +    expect(readFileSync(path, "utf8")).toBe(JSON.stringify(s, 
+          +null, 2) + "\n");                                             
+      121    });
+      122 
+      123    it("replaces the previous content when saving twice", () =>
+           {
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● I implemented all 13 gap tests. The suite now passes 45 tests in 4 files and
+  npm run typecheck is clean. Nothing is committed yet.
+
+  What I added
+  - tests/core/store.test.ts:
+    - Load validation: items not an array, bad nextId values (0, 1.5, "2", -1,
+      null), items without a valid id, and a path that is a directory.
+    - Save and ids: output format, saving twice, and no id reuse after an item
+      is removed.
+  - tests/core/store.rename.test.ts (new): mocks renameSync to fail. It checks
+    that the original file is kept, the temp file is removed, and a StoreError
+    is thrown. This is the real atomic-write guarantee. It's a separate file
+    because the mock applies to the whole module.
+  - tests/core/clock.test.ts: the error message names the bad value, and today()
+    uses the local date at 00:30 and 23:30, not UTC.
+  - tests/core/config.test.ts: ACTIONTRACK_OUTBOX, each override applied
+    independently, and error instances being Error and ActiontrackError with the
+    message kept.
+
+  modules/01-core/test-cases.md now maps every case to its test, and its summary
+  says no gaps remain.
+
+  The first run hit a parse error in store.test.ts because a \n got expanded
+  into a literal line break. I fixed that.
+
+  The rename test passes only if the mock actually throws, and it checks for the
+  simulated failure message, so it isn't a vacuous pass. The local-date test
+  only differs from a UTC-based version in time zones with a UTC offset. Here,
+  the 00:30 case is the one that tells them apart.
+
+  Should I commit and push these to feature/01-core?
+
+> commit and push these changes
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● I committed the test cases doc and the gap tests as 5759d2f and pushed them to
+  origin/feature/01-core.
+
+  The commit adds modules/01-core/test-cases.md and the new tests in
+  tests/core/, which bring the suite to 45 tests. The working tree is clean.
+
+  Module 01 is now finished on its branch, but there's no pull request into main
+  yet. Do you want me to open one, or move on to the next module (03-dates,
+  04-owners or 02-parser)?
+
+> open a pull request into main and give me pr description and also create a
+  skill for this task (raise-pr, which commits and pushes to remote and then
+  gives me pr link along with pr summary)
+
+  Made 1 scratchpad edit +30, ran 3 shell commands (ctrl+o to expand)
+
+● Write(.claude\skills\raise-pr\SKILL.md)
+  ⎿  Wrote 56 lines to .claude\skills\raise-pr\SKILL.md
+      1 ---
+      2 name: raise-pr
+      3 description: Commit the current work, push the branch to the remo
+        te, and give back a pull request link with a PR summary. Use when
+         the user asks to raise, open, or create a PR, or types /raise-pr
+        .
+      4 disable-model-invocation: true
+      5 ---
+      6
+      7 # raise-pr
+     … +49 lines (ctrl+o to expand)
+
+● I couldn't open the pull request: gh isn't installed, so I couldn't create it
+  from here. It still has to be opened from the link below. I did write the
+  description and create the raise-pr skill.
+
+  Open the PR
+
+  https://github.com/sanskruti-bhartal-coditas/ai-session-assessment/compare/mai
+  n...feature/01-core?expand=1
+
+  I also saved a prefilled version of that link, with the title and description
+  already filled in, at C:\Users\CODITA~1\AppData\Local\Temp\claude\6bf7cd367d5c
+  da85\2228b703-3a0c-4e20-b0a5-168e74366311\scratchpad\pr-url.txt. The
+  description is also saved at ...\scratchpad\pr-01-core.md in the same folder.
+
+  PR title
+
+  Implement 01-core: types, errors, atomic JSON store, clock, config
+
+  PR description
+
+  Summary
+  Implements module 01-core, the shared foundation the other nine modules build
+  on: domain types, a JSON store with atomic writes, id allocation, a clock with
+  a --today override, config resolution, and typed errors with exit codes. It
+  follows modules/01-core/spec.md.
+
+  Changes
+  - src/core/types.ts: Item, Source, Store and the status types.
+  - src/core/errors.ts: UsageError (exit 2), StoreError (exit 3), NotFoundError
+    (exit 1).
+  - src/core/store.ts: loadStore, saveStore and allocateId.
+    - A missing file gives an empty store. Invalid JSON, a wrong shape or an
+      unknown version throws StoreError naming the path.
+    - Saves serialise first, write <path>.tmp, then rename. A failure at any
+      step leaves the previous file intact.
+  - src/core/clock.ts: today(override?). It validates real calendar dates and
+    otherwise returns the local date.
+  - src/core/config.ts: resolveConfig with precedence flag, then env var, then
+    default.
+  - tsconfig.json: added "types": ["node"], because TypeScript 7 doesn't pick up
+    @types/node on its own.
+  - modules/01-core/tasks.md has C1 to C7 ticked, and test-cases.md is new and
+    maps every spec case to a test.
+
+  Beyond the spec
+  loadStore also rejects a store whose nextId is not above its highest item id,
+  so a hand-edited file can't cause an id to be reused.
+
+  Testing
+  - npm test: 45 tests in 4 files, all passing.
+  - npm run typecheck: clean.
+  - The atomic-write guarantee is tested for both the serialise step and the
+    rename step.
+  - The clock test checks the local date at 00:30 and 23:30, so it tells local
+    time apart from UTC.
+  - typecheck only covers src/, so the tests are not type-checked.
+
+  Notes for reviewers
+  There is no CLI or command code yet. Next in the build order are 03-dates,
+  04-owners and 02-parser.
+
+  The raise-pr skill
+
+  It's at .claude/skills/raise-pr/SKILL.md, and you run it by typing /raise-pr.
+  I set disable-model-invocation: true, so it only runs when you type it, since
+  it pushes to the remote. It hasn't been run or tested yet. It does these
+  steps:
+  1. Checks the branch: it refuses to commit on main.
+  2. Verifies: it runs typecheck and tests, and stops if either fails.
+  3. Commits: it skips secrets, .actiontrack/, outbox/ payloads and
+     node_modules/.
+  4. Pushes: it never force-pushes.
+  5. Writes the PR: a title and description built from the real diff, listing
+     only checks it actually ran.
+  6. Creates the PR: it uses gh pr create if available. If not, as here, it
+     gives the compare link, says plainly that the PR isn't created yet, and
+     prints the description to paste.
+  7. Reports: the PR link, the commit hashes, and the full PR text.
+
+  The skill file isn't committed. Do you want it on main or on this branch? I'd
+  put it in a small separate commit, so it doesn't go into the 01-core PR.
+
+> commit the skill in a separate commit
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● I committed the skill on its own as 67b753e ("Add raise-pr skill for
+  committing, pushing and drafting a PR summary"). It adds only
+  .claude/skills/raise-pr/SKILL.md. I haven't pushed it, since you didn't ask.
+
+  Two things to know:
+  - PR scope: the commit is on feature/01-core, so once pushed, the 01-core PR
+    will also include the skill. If you'd rather keep the PR to module 01 only,
+    I can move the commit to its own branch.
+  - Untracked files: two things showed up in the working tree that I didn't
+    create and left alone. They are
+    2026-11-24-165214-connect-to-this-repo-for-the-project.txt and a
+    conversation files/ folder. They look like exported conversation logs, so
+    I'd check them before committing anything and keep them out of the repo.
+
+  Should I push this commit?
+
+> push it
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● I pushed the skill commit 67b753e to origin/feature/01-core.
+
+  The branch now has three commits ahead of main: the module 01 implementation,
+  the gap tests and test-cases doc, and the skill. The PR still isn't opened, so
+  use the compare link from earlier. The PR description I wrote doesn't mention
+  the skill, so you may want to add a line about
+  .claude/skills/raise-pr/SKILL.md.
+
+> /raise-pr
+
+  Ran 2 shell commands (ctrl+o to expand)
+  ⎿  Interrupted · What should Claude do instead?

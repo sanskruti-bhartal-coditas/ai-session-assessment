@@ -1,0 +1,189 @@
+
+> <browser_instruction># Claude in Chrome browser automation
+
+  You have access to browser automation tools (mcp__claude-in-chrome__*) for
+  interacting with web pages in Chrome. Follow these guidelines for effective
+  browser automation.
+
+  ## Loading deferred tools
+
+  If the mcp__claude-in-chrome__* tools are deferred (must be loaded via
+  ToolSearch before use), load every tool you expect to need in ONE ToolSearch
+  call — the select query accepts a comma-separated list — never one call per
+  tool. Start with the core set:
+
+  ToolSearch with query
+  "select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrome__naviga
+  te,mcp__claude-in-chrome__computer,mcp__claude-in-chrome__read_page,mcp__clau
+  de-in-chrome__tabs_create_mcp,mcp__claude-in-chrome__tabs_close_mcp"
+
+  Add task-specific tools to the same call when the task obviously needs them:
+  read_console_messages / read_network_requests for debugging, form_input for
+  forms, gif_creator for recordings, javascript_tool for page scripting.
+
+  ## GIF recording
+
+  When performing multi-step browser interactions that the user may want to
+  review or share, use mcp__claude-in-chrome__gif_creator to record them.
+
+  You must ALWAYS:
+  * Capture extra frames before and after taking actions to ensure smooth
+  playback
+  * Name the file meaningfully to help the user identify it later (e.g.,
+  "login_process.gif")
+
+  ## Console log debugging
+
+  You can use mcp__claude-in-chrome__read_console_messages to read console
+  output. Console output may be verbose. If you are looking for specific log
+  entries, use the 'pattern' parameter with a regex-compatible pattern. This
+  filters results efficiently and avoids overwhelming output. For example, use
+  pattern: "[MyApp]" to filter for application-specific logs rather than
+  reading all console output.
+
+  ## Alerts and dialogs
+
+  IMPORTANT: Do not trigger JavaScript alerts, confirms, prompts, or browser
+  modal dialogs through your actions. These browser dialogs block all further
+  browser events and will prevent the extension from receiving any subsequent
+  commands. Instead, when possible, use console.log for debugging and then use
+  the mcp__claude-in-chrome__read_console_messages tool to read those log
+  messages. If a page has dialog-triggering elements:
+  1. Avoid clicking buttons or links that may trigger alerts (e.g., "Delete"
+  buttons with confirmation dialogs)
+  2. If you must interact with such elements, warn the user first that this may
+  interrupt the session
+  3. Use mcp__claude-in-chrome__javascript_tool to check for and dismiss any
+  existing dialogs before proceeding
+
+  If you accidentally trigger a dialog and lose responsiveness, inform the user
+  they need to manually dismiss it in the browser.
+
+  ## Avoid rabbit holes and loops
+
+  When using browser automation tools, stay focused on the specific task. If
+  you encounter any of the following, stop and ask the user for guidance:
+  - Unexpected complexity or tangential browser exploration
+  - Browser tool calls failing or returning errors after 2-3 attempts
+  - No response from the browser extension
+  - Page elements not responding to clicks or input
+  - Pages not loading or timing out
+  - Unable to complete the browser task despite multiple approaches
+
+  Explain what you attempted, what went wrong, and ask how the user would like
+  to proceed. Do not keep retrying the same failing browser action or explore
+  unrelated pages without checking in first.
+
+  ## Tab context and session startup
+
+  IMPORTANT: At the start of each browser automation session, call
+  mcp__claude-in-chrome__tabs_context_mcp first to get information about the
+  user's current browser tabs. Use this context to understand what the user
+  might want to work with before creating new tabs.
+
+  Never reuse tab IDs from a previous/other session. Follow these guidelines:
+  1. Only reuse an existing tab if the user explicitly asks to work with it
+  2. Otherwise, create a new tab with mcp__claude-in-chrome__tabs_create_mcp
+  3. If a tool returns an error indicating the tab doesn't exist or is invalid,
+  call tabs_context_mcp to get fresh tab IDs
+  4. When a tab is closed by the user or a navigation error occurs, call
+  tabs_context_mcp to see what tabs are available</browser_instruction>
+
+> can i implement all these modules at once on their own worktree ?
+
+● Not all ten at once, because the modules depend on each other. You can
+  parallelise within each tier, though, and give each module its own worktree.
+
+  The build order in modules/README.md is:
+
+  ┌──────┬───────────┬──────────────────────────────────────────────────────┐
+  │ Wave │  Modules  │                        Notes                         │
+  ├──────┼───────────┼──────────────────────────────────────────────────────┤
+  │ 1    │ 01-core   │ Must land first. Everything imports from it (types,  │
+  │      │           │ clock, errors).                                      │
+  ├──────┼───────────┼──────────────────────────────────────────────────────┤
+  │ 2    │ 02, 03,   │ Independent of each other, so they can run in        │
+  │      │ 04        │ parallel.                                            │
+  ├──────┼───────────┼──────────────────────────────────────────────────────┤
+  │ 3    │ 05, 06    │ Need wave 2.                                         │
+  ├──────┼───────────┼──────────────────────────────────────────────────────┤
+  │ 4    │ 07, 08,   │ Need 05 and 06. They are independent of each other.  │
+  │      │ 09        │                                                      │
+  ├──────┼───────────┼──────────────────────────────────────────────────────┤
+  │ 5    │ 10-cli    │ Wires everything together.                           │
+  └──────┴───────────┴──────────────────────────────────────────────────────┘
+
+  If you start all ten at once, modules 02 to 10 would be coding against
+  interfaces that don't exist yet. Each would have to guess at them or stub
+  them, and merging would probably conflict.
+
+  How I'd do it:
+  - I'd use one worktree per module, each on its own branch, with a subagent per
+    worktree (the Agent tool supports isolation: "worktree").
+  - Each wave would run in parallel and be merged into main before the next wave
+    starts. That way later modules build on the real code.
+  - Each agent would follow its module's tasks.md, tick the boxes, and run npm
+    test and npm run typecheck in its worktree.
+  - You'd see more merge conflicts on shared files (package.json, shared type
+    files) than on module folders, so I'd merge in dependency order.
+
+  Before any of this: CLAUDE.md says not to implement until you approve the
+  design. There are also open items: the SIMILARITY_THRESHOLD tuning and the
+  people.json addresses.
+
+  If you approve the design, I can start with 01-core in a worktree and then fan
+  out wave 2. Do you approve?
+
+> give me prompt to run 03, 04 run parallely and at the end they should merge
+  with main
+
+● Paste this prompt into a fresh session. It assumes the design is approved and
+  01-core is already merged into main, because 03 and 04 import from it.
+
+  The design is approved. Implement modules 03 and 04 of actiontrack in
+  parallel, each in its own git worktree, then merge both into main.
+
+  Prerequisite check (do this first, stop and tell me if it fails):
+  - 01-core must already be on main (src/core/* exists on main and `npm test`
+  passes there). If not, stop.
+
+  Setup:
+  - Branch each worktree from the current tip of main: feat/03-<name> and
+  feat/04-<name>, where <name> comes from the modules/03-* and modules/04-*
+  folder names.
+  - Launch two subagents in a SINGLE message so they run concurrently, each with
+  isolation: "worktree".
+
+  Each subagent must:
+  1. Read CLAUDE.md, REQUIREMENTS.md, and its own
+  modules/<NN>-<name>/{plan,spec,tasks}.md. Follow tasks.md in order, ticking
+  each box as it completes.
+  2. Touch only its own module's source and tests (src/<module>/...,
+  tests/<module>...). Do NOT edit package.json, tsconfig.json, src/core/*, or
+  the other module's files. If a change to a shared file is truly needed, stop
+  and report it instead of making it.
+  3. Check parser/date/owner behaviour against the real files in notes/, not
+  only hand-written fixtures.
+  4. Run `npm run typecheck` and `npm test` in its worktree; both must pass.
+  5. Commit on its branch with a clear message ending with:
+     Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+  6. Report back: branch name, files changed, test results, any deviations from
+  spec.
+
+  After both finish (I want to see both reports first):
+  1. In the main checkout, switch to main and merge feat/03-* then feat/04-*
+  with `git merge --no-ff`.
+  2. If there are conflicts, do not guess: show them to me.
+  3. Run `npm run typecheck` and `npm test` on the merged main; report the
+  results.
+  4. Remove the two worktrees and delete the merged feature branches only if the
+  merge and tests succeeded.
+  5. Do NOT push to any remote.
+
+  Notes:
+  - If your CLAUDE.md-tracked tasks.md checkboxes are edited in both worktrees,
+    they're in different files (one per module), so they shouldn't conflict.
+  - The current branch is docs/module-test-cases, not main. Check that main has
+    01-core before running this.
+  - I left out the push on purpose. If you want one, add it as a separate step
+    after you've reviewed the merged result.
