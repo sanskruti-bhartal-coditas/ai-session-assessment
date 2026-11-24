@@ -1,6 +1,6 @@
 # 02-parser: Test Cases
 
-Derived from [spec.md](spec.md). Status shows whether a case is automated. `Auto` means covered in `tests/parser/parseNote.test.ts` (on `feature/02-parser`). `GAP` means the spec requires it but no test covers it yet.
+Derived from [spec.md](spec.md). Status shows whether a case is automated. `Auto` means covered in `tests/parser/parseNote.test.ts`. `GAP` means the spec requires it but no test covers it yet.
 
 All cases call `parseNote(file, content)`. Unless stated, "header" means `# Meeting: Sync`, `Date: 2026-09-01`, `Attendees: A B, C D`.
 
